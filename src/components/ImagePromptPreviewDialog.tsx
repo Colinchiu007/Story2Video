@@ -68,9 +68,9 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 /** 获取多模型对比需要的模型列表（始终包含内置可灵 + 所有已配置自定义API） */
-function getCompareProfiles(): Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> }> {
+function getCompareProfiles(): Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; modelName?: string; extra?: Record<string, string> }> {
   const stored = localStorage.getItem('api_config');
-  const results: Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> }> = [];
+  const results: Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; modelName?: string; extra?: Record<string, string> }> = [];
 
   // 始终加入内置可灵（平台内置AI）
   results.push({
@@ -98,6 +98,7 @@ function getCompareProfiles(): Array<{ id: string; provider: string; providerLab
         profileName: p.name || PROVIDER_LABELS[p.provider] || p.provider,
         apiKey: p.apiKey,
         apiBaseUrl: p.apiBaseUrl,
+        modelName: p.modelName,
         extra: p.extra,
       });
     }
@@ -261,7 +262,7 @@ export default function ImagePromptPreviewDialog({ open, onOpenChange, onGenerat
         try {
           const res = await startImageGenerationWithProfile(
             { prompt, size: '1024x1024' },
-            { provider: p.provider, apiKey: p.apiKey, apiBaseUrl: p.apiBaseUrl, extra: p.extra },
+            { provider: p.provider, apiKey: p.apiKey, apiBaseUrl: p.apiBaseUrl, modelName: p.modelName, extra: p.extra },
           );
           setCompareResults((prev) => {
             const next = [...prev];

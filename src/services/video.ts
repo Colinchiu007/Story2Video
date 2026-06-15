@@ -629,9 +629,9 @@ export async function queryImageGeneration(imageId: string): Promise<{
  */
 export async function startImageGenerationWithProfile(
   params: { prompt: string; size?: string; referenceImageUrl?: string },
-  profile: { provider: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> },
+  profile: { provider: string; apiKey?: string; apiBaseUrl?: string; modelName?: string; extra?: Record<string, string> },
 ): Promise<{ imageId: string; status: string }> {
-  const { provider, apiKey, apiBaseUrl, extra } = profile;
+  const { provider, apiKey, apiBaseUrl, modelName, extra } = profile;
 
   // Jimeng 自定义API（即梦4.0使用火山引擎AK/SK签名认证）
   if (provider === 'jimeng') {
@@ -670,7 +670,8 @@ export async function startImageGenerationWithProfile(
       prompt: params.prompt,
       size: params.size ?? '1280x720',
       minimax_api_key: apiKey.trim(),
-    }) as { imageId?: string; publicUrl?: string; status?: string; error?: string };
+      model: modelName || 'image-01',
+    }) as { imageId?: string; publicUrl?: string; status?: string; error?: string; raw?: unknown };
     if (data.error) throw new Error(data.error);
     if (!data.imageId) throw new Error('MiniMax 未返回图片 URL');
     return { imageId: data.imageId, status: 'completed' };

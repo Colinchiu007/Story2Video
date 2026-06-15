@@ -1,1350 +1,4 @@
-(): Record<string, string> {\n  return {\n    "Access-Control-Allow-Origin": "*",\n    "Access-Control-Allow-Methods": "POST, OPTIONS",\n    "Access-Control-Allow-Headers": "Content-Type, Authorization",\n  };\n}\n\nserve(async (req: Request): Promise<Response> => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(JSON.stringify({ error: "Method Not Allowed" }), {\n      status: 405,\n      headers: { "Content-Type": "application/json", ...corsHeaders() },\n    });\n  }\n\n  let apiBaseUrl: string;\n  let apiKey: string;\n  let provider = "";\n\n  try {\n    const body = await req.json();\n    apiBaseUrl = (body.api_base_url as string)?.replace(/\\/$/, "") ?? "";\n    apiKey = (body.api_key as string) ?? "";\n    provider = (body.provider as string) ?? "";\n  } catch {\n    return new Response(JSON.stringify({ error: "Invalid request body" }), {\n      status: 400,\n      headers: { "Content-Type": "application/json", ...corsHeaders() },\n    });\n  }\n\n  // Vidu: 没有 /models 端点，使用实际图片生成端点做轻量级连通性测试\n  if (provider === "vidu") {\n    const viduKey = apiKey || Deno.env.get("VIDU_API_KEY") || "";\n    if (!viduKey) {\n      return new Response(\n        JSON.stringify({ ok: false, message: "未配置 Vidu API Key" }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n    try {\n      const resp = await fetch("https://api.vidu.cn/ent/v2/reference2image", {\n        method: "POST",\n        headers: {\n          "Content-Type": "application/json",\n          "Authorization": `Token ${viduKey}`,\n        },\n        body: JSON.stringify({\n          model: "viduq2",\n          prompt: "test",\n          aspect_ratio: "1:1",\n          resolution: "1080p",\n        }),\n        signal: AbortSignal.timeout(15000),\n      });\n      // 200 或返回 task_id 表示认证通过\n      if (resp.status === 200) {\n        const result = await resp.json();\n        if (result.task_id) {\n          return new Response(\n            JSON.stringify({ ok: true, message: "Vidu API 连通性测试通过" }),\n            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n          );\n        }\n      }\n      // 401 明确是鉴权失败\n      if (resp.status === 401) {\n        return new Response(\n          JSON.stringify({ ok: false, message: "Vidu API Key 无效（401），请检查密钥是否正确" }),\n          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n        );\n      }\n      const text = await resp.text();\n      return new Response(\n        JSON.stringify({ ok: false, message: `Vidu API 测试失败（HTTP ${resp.status}）: ${text.slice(0, 200)}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    } catch (err) {\n      return new Response(\n        JSON.stringify({ ok: false, message: `Vidu 连接失败: ${(err as Error).message}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n  }\n\n  // SenseNova: 使用固定地址，通过 /images/generations 端点测试连通性\n  if (provider === "sensenova") {\n    const baseUrl = "https://token.sensenova.cn/v1";\n    const key = apiKey || Deno.env.get("SENSENOVA_API_KEY") || "";\n    if (!key) {\n      return new Response(\n        JSON.stringify({ ok: false, message: "未配置 SenseNova API Key" }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n    try {\n      const resp = await fetch(`${baseUrl}/images/generations`, {\n        method: "POST",\n        headers: {\n          "Content-Type": "application/json",\n          "Authorization": `Bearer ${key}`,\n        },\n        body: JSON.stringify({\n          model: "sensenova-u1-fast",\n          prompt: "test",\n          size: "2048x2048",\n          n: 1,\n        }),\n        signal: AbortSignal.timeout(15000),\n      });\n      if (resp.status === 200) {\n        return new Response(\n          JSON.stringify({ ok: true, message: "SenseNova API 连通性测试通过，密钥有效" }),\n          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n        );\n      }\n      if (resp.status === 401) {\n        return new Response(\n          JSON.stringify({ ok: false, message: "SenseNova API Key 无效（401），请检查密钥是否正确" }),\n          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n        );\n      }\n      const text = await resp.text();\n      return new Response(\n        JSON.stringify({ ok: false, message: `SenseNova API 测试失败（HTTP ${resp.status}）: ${text.slice(0, 200)}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    } catch (err) {\n      return new Response(\n        JSON.stringify({ ok: false, message: `SenseNova 连接失败: ${(err as Error).message}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n  }\n\n  // Generic OpenAI-compatible test\n  if (!apiBaseUrl) {\n    return new Response(\n      JSON.stringify({ ok: false, message: "请填写 API 基础地址" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  // Reject placeholder URLs\n  if (\n    apiBaseUrl.includes("example.com") ||\n    apiBaseUrl.includes("placeholder") ||\n    apiBaseUrl.includes("localhost")\n  ) {\n    return new Response(\n      JSON.stringify({ ok: false, message: "请填写真实的 API 地址，不能使用示例占位符" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const testUrl = `${apiBaseUrl}/models`;\n  let responseStatus = 0;\n  let responseText = "";\n\n  try {\n    const testResp = await fetch(testUrl, {\n      method: "GET",\n      headers: { "Authorization": `Bearer ${apiKey}` },\n      signal: AbortSignal.timeout(10000),\n    });\n    responseStatus = testResp.status;\n    responseText = await testResp.text();\n  } catch (err) {\n    const msg = (err as Error).message;\n    return new Response(\n      JSON.stringify({ ok: false, message: `连接失败: ${msg}` }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  if (responseStatus === 200) {\n    return new Response(\n      JSON.stringify({ ok: true, message: "连通性测试通过，API 地址和密钥有效" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  if (responseStatus === 401 || responseStatus === 403) {\n    return new Response(\n      JSON.stringify({ ok: false, message: "API 地址可达，但鉴权密钥无效（401/403），请检查密钥是否正确" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  if (responseStatus === 404) {\n    return new Response(\n      JSON.stringify({ ok: true, message: "API 地址可达（404 为该 API 未开放 /models 列表，不影响使用）" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  return new Response(\n    JSON.stringify({ ok: false, message: `连接异常（HTTP ${responseStatus}）: ${responseText.slice(0, 200)}` }),\n    { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n  );\n});\n'}]}
-</action>
-<observation>
-**MCPObservation**
-NAME: supabase_deploy_edge_function
-RESULTS: {"success":true}
-</observation>
-<action>
-**MCPAction**
-NAME: supabase_deploy_edge_function
-ARGUMENTS: {'name': 'sensenova-generate-image', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool', 'files': [{'path': '/workspace/app-bmyoogysfs3l/supabase/functions/sensenova-generate-image/index.ts', 'name': 'index.ts', 'content': 'import { serve } from "https://deno.land/std/http/server.ts";\n\nfunction corsHeaders(): Record<string, string> {\n  return {\n    "Access-Control-Allow-Origin": "*",\n    "Access-Control-Allow-Methods": "POST, OPTIONS",\n    "Access-Control-Allow-Headers": "Content-Type, Authorization",\n  };\n}\n\n/** Convert user size to SenseNova size string */\nfunction sizeToSenseNovaSize(size: string): string {\n  // SenseNova supported sizes:\n  // 1664x2496 (2:3) | 2496x1664 (3:2) | 1760x2368 (3:4) | 2368x1760 (4:3)\n  // 1824x2272 (4:5) | 2272x1824 (5:4) | 2048x2048 (1:1) | 2752x1536 (16:9)\n  // 1536x2752 (9:16) | 3072x1376 (21:9) | 1344x3136 (9:21)\n  const map: Record<string, string> = {\n    "720x1280": "1536x2752",\n    "1280x720": "2752x1536",\n    "1080x1920": "1536x2752",\n    "1920x1080": "2752x1536",\n    "1024x1024": "2048x2048",\n    "512x512": "2048x2048",\n  };\n  if (map[size]) return map[size];\n  const validSizes = [\n    "1664x2496", "2496x1664", "1760x2368", "2368x1760",\n    "1824x2272", "2272x1824", "2048x2048", "2752x1536",\n    "1536x2752", "3072x1376", "1344x3136",\n  ];\n  if (validSizes.includes(size)) return size;\n  return "2752x1536"; // default 16:9\n}\n\nserve(async (req: Request): Promise<Response> => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(\n      JSON.stringify({ error: "Method Not Allowed" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  let body: Record<string, unknown>;\n  try {\n    body = await req.json();\n  } catch {\n    return new Response(\n      JSON.stringify({ error: "Invalid request body" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const userApiKey = (body.sensenova_api_key as string) ?? "";\n  const envApiKey = Deno.env.get("SENSENOVA_API_KEY") ?? "";\n  const apiKey = userApiKey || envApiKey;\n\n  if (!apiKey) {\n    return new Response(\n      JSON.stringify({ error: "未配置 SenseNova API Key，请在设置中填写" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const prompt = (body.prompt as string) ?? "";\n  if (!prompt) {\n    return new Response(\n      JSON.stringify({ error: "缺少 prompt 参数" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const size = sizeToSenseNovaSize((body.size as string) ?? "720x1280");\n  const model = (body.model as string) ?? "sensenova-u1-fast";\n  const n = (body.n as number) ?? 1;\n\n  // SenseNova U1 Fast 使用固定地址\n  const baseUrl = "https://token.sensenova.cn/v1";\n\n  try {\n    const upstream = await fetch(`${baseUrl}/images/generations`, {\n      method: "POST",\n      headers: {\n        "Content-Type": "application/json",\n        "Authorization": `Bearer ${apiKey}`,\n      },\n      body: JSON.stringify({\n        model,\n        prompt,\n        size,\n        n,\n      }),\n      signal: AbortSignal.timeout(30000),\n    });\n\n    const result = await upstream.json();\n\n    if (!upstream.ok) {\n      const msg = result.error?.message ?? result.message ?? JSON.stringify(result);\n      return new Response(\n        JSON.stringify({ error: `SenseNova 图片生成失败: ${msg}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    // OpenAI-compatible response: { data: [{ url: string }], created: number }\n    const dataArr = result.data as Array<{ url?: string }> | undefined;\n    const firstImage = dataArr && dataArr.length > 0 ? dataArr[0] : undefined;\n    const imageUrl = firstImage?.url;\n\n    if (!imageUrl) {\n      return new Response(\n        JSON.stringify({ error: `SenseNova 未返回图片 URL: ${JSON.stringify(result).slice(0, 200)}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    // 直接返回原始图片URL，由前端负责下载并上传到Storage\n    return new Response(\n      JSON.stringify({ imageId: imageUrl, status: "completed", rawUrl: imageUrl }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  } catch (err) {\n    const msg = err instanceof Error ? err.message : String(err);\n    return new Response(\n      JSON.stringify({ error: `请求失败: ${msg}` }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n});\n'}]}
-</action>
-<observation>
-**MCPObservation**
-NAME: supabase_deploy_edge_function
-RESULTS: {"success":true}
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && npx vitest run 2>&1
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-
- RUN  v4.1.6 /workspace/app-bmyoogysfs3l
-
- ✓ src/lib/slideshow.test.ts (3 tests) 66ms
- ✓ src/lib/history-prompt.test.ts (40 tests) 17ms
- ✓ src/lib/segment.test.ts (21 tests) 274ms
- ✓ src/lib/text-segmentation.test.ts (27 tests) 19ms
- ✓ src/lib/progress.test.ts (7 tests) 7ms
- ✓ src/services/video.test.ts (7 tests) 6ms
-
- Test Files  6 passed (6)
-      Tests  105 passed (105)
-   Start at  15:12:03
-   Duration  3.55s (transform 477ms, setup 0ms, import 1.06s, tests 389ms, environment 6.21s)
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && npm run lint 2>&1 | grep -v "node_modules" | head -25
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  Type 'undefined' is not assignable to type 'IDict | PromiseLike<IDict>'.
-  Type 'undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-Checked 101 files in 753ms. No fixes applied.
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -n "getSenseNovaApiBaseUrl" src/services/video.ts
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-77:function getSenseNovaApiBaseUrl(): string | null {
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/src/services/video.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[70, 90], user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/src/services/video.ts is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/services/video.ts:
-    70   const p = getActiveProfile('image');
-    71   if (p?.provider === 'sensenova') {
-    72     return p.apiKey?.trim() || null;
-    73   }
-    74   return null;
-    75 }
-    76 
-    77 function getSenseNovaApiBaseUrl(): string | null {
-    78   const p = getActiveProfile('image');
-    79   if (p?.provider === 'sensenova') {
-    80     return p.apiBaseUrl?.trim() || null;
-    81   }
-    82   return null;
-    83 }
-    84 
-    85 function readModelConfig(): { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } {
-    86   const stored = localStorage.getItem('api_config');
-    87   if (!stored) return {};
-    88   try {
-    89     return (JSON.parse(stored) as { modelConfig?: { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } }).modelConfig || {};
-    90   } catch { /* ignore */ }
-
-
-</observation>
-<action>
-**FileEditAction**
-Path: [/workspace/app-bmyoogysfs3l/src/services/video.ts]
-Thought: 
-Command: str_replace
-Old String: ```
-function getSenseNovaApiBaseUrl(): string | null {
-  const p = getActiveProfile('image');
-  if (p?.provider === 'sensenova') {
-    return p.apiBaseUrl?.trim() || null;
-  }
-  return null;
-}
-
-function readModelConfig(): { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } {
-```
-New String: ```
-function readModelConfig(): { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } {
-```
-
-</action>
-<observation>
-The file /workspace/app-bmyoogysfs3l/src/services/video.ts has been edited.
-
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && npm run lint 2>&1 | grep -v "node_modules" | head -20
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  No index signature with a parameter of type 'number' was found on type '{}'.
-  Type 'undefined' is not assignable to type 'IDict | PromiseLike<IDict>'.
-  Type 'undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-Checked 101 files in 724ms. No fixes applied.
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-TodoAction(todos=[TodoItem(id='1', status='completed', priority='high', content='ApiSettingsDialog: 将sensenova加入fixedUrlProviders，鉴权密钥改API KEY', details='', group=None, agent_name=None), TodoItem(id='2', status='completed', priority='high', content='api-health-check: SenseNova测试使用固定地址', details='', group=None, agent_name=None), TodoItem(id='3', status='completed', priority='high', content='sensenova-generate-image: 使用固定地址，简化逻辑', details='', group=None, agent_name=None), TodoItem(id='4', status='completed', priority='high', content='video.ts: 不再传递base_url给SenseNova Edge Function', details='', group=None, agent_name=None), TodoItem(id='5', status='completed', priority='high', content='重新部署Edge Function，运行测试和Lint', details='', group=None, agent_name=None)], command='update', thought='', action=<ActionType.TODO: 'todo'>, content='')
-</action>
-<observation>
-TodoObservation(content='<system-reminder>\nYour todo list has changed. Here are the latest contents of your todo list:\n\n1. ApiSettingsDialog: 将sensenova加入fixedUrlProviders，鉴权密钥改API KEY *high* [completed]\n\n2. api-health-check: SenseNova测试使用固定地址 *high* [completed]\n\n3. sensenova-generate-image: 使用固定地址，简化逻辑 *high* [completed]\n\n4. video.ts: 不再传递base_url给SenseNova Edge Function *high* [completed]\n\n5. 重新部署Edge Function，运行测试和Lint *high* [completed]\n</system-reminder>', state=TodoState(items=[TodoItem(id='1', status='completed', priority='high', content='ApiSettingsDialog: 将sensenova加入fixedUrlProviders，鉴权密钥改API KEY', details='', group=None, agent_name=None), TodoItem(id='2', status='completed', priority='high', content='api-health-check: SenseNova测试使用固定地址', details='', group=None, agent_name=None), TodoItem(id='3', status='completed', priority='high', content='sensenova-generate-image: 使用固定地址，简化逻辑', details='', group=None, agent_name=None), TodoItem(id='4', status='completed', priority='high', content='video.ts: 不再传递base_url给SenseNova Edge Function', details='', group=None, agent_name=None), TodoItem(id='5', status='completed', priority='high', content='重新部署Edge Function，运行测试和Lint', details='', group=None, agent_name=None)], updated_at='2026-06-10T07:13:03.566390+00:00'), system_reminder='', observation=<ObservationType.TODO: 'todo'>)
-</observation>
-<observation>
-**RecallObservation**
-recall_type=RecallType.KNOWLEDGE, microagent_knowledge=security
-</observation>
-<action>
-**MCPAction**
-NAME: get_console_logs
-ARGUMENTS: {'reason': '多模型对比生成图片失败，查看具体错误', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_console_logs
-RESULTS: items:
-    - timestamp: "2026-06-10T11:06:08.888000Z"
-      level: warning
-      message: 'Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.'
-    - timestamp: "2026-06-10T11:08:16.166000Z"
-      level: info
-      message: '[invokeFunction] calling jimeng-test-connection {"bodyKeys":["access_key_id","secret_access_key"]}'
-    - timestamp: "2026-06-10T11:08:19.761000Z"
-      level: info
-      message: '[invokeFunction] calling api-health-check {"bodyKeys":["provider","api_key","api_base_url"]}'
-    - timestamp: "2026-06-10T11:08:21.745000Z"
-      level: info
-      message: '[invokeFunction] calling api-health-check {"bodyKeys":["provider","api_key","api_base_url"]}'
-    - timestamp: "2026-06-10T11:08:34.997000Z"
-      level: warning
-      message: 'Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.'
-    - timestamp: "2026-06-10T11:08:54.595000Z"
-      level: info
-      message: '[invokeFunction] calling kling-omni-image-submit {"bodyKeys":["prompt","model_name","resolution","result_type","n","aspect_ratio"]}'
-    - timestamp: "2026-06-10T11:08:54.598000Z"
-      level: info
-      message: '[invokeFunction] calling vidu-generate-image {"bodyKeys":["prompt","size","reference_image_url","vidu_api_key"]}'
-    - timestamp: "2026-06-10T11:08:54.599000Z"
-      level: info
-      message: '[invokeFunction] calling sensenova-generate-image {"bodyKeys":["prompt","size","sensenova_api_key","model","n"]}'
-    - timestamp: "2026-06-10T11:08:54.808000Z"
-      level: error
-      message: '[invokeFunction] Edge Function vidu-generate-image error: {"name":"FunctionsHttpError","message":"Edge Function returned a non-2xx status code"}'
-      stack: |-
-        FunctionsHttpError: Edge Function returned a non-2xx status code
-            at FunctionsClient.<anonymous> (https://app-bmyoogysfs3l-vitesandbox.miaoda.cn/node_modules/.vite/deps/@supabase_supabase-js.js?v=5f8d6eda:325:29)
-            at Generator.next (<anonymous>)
-            at fulfilled (https://app-bmyoogysfs3l-vitesandbox.miaoda.cn/node_modules/.vite/deps/tslib.es6-DTT7W5EN.js?v=8680502f:29:20)
-    - timestamp: "2026-06-10T11:08:54.811000Z"
-      level: error
-      message: '[invokeFunction] error details: {"name":"FunctionsHttpError","message":"Edge Function returned a non-2xx status code","stack":"FunctionsHttpError: Edge Function returned a non-2xx status code\n    at FunctionsClient.<anonymous> (https://app-bmyoogysfs3l-vitesandbox.miaoda.cn/node_modules/.vite/deps/@supabase_supabase-js.js?v=5f8d6eda:325:29)\n    at Generator.next (<anonymous>)\n    at fulfilled (https://app-bmyoogysfs3l-vitesandbox.miaoda.cn/node_modules/.vite/deps/tslib.es6-DTT7W5EN.js?v=8680502f:29:20)"}'
-    - timestamp: "2026-06-10T11:09:25.820000Z"
-      level: info
-      message: '[invokeFunction] calling kling-omni-image-query {"bodyKeys":["task_id"]}'
-
-</observation>
-<action>
-**MCPAction**
-NAME: get_network_logs
-ARGUMENTS: {'search': 'jimeng', 'reason': '查看即梦API调用', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_network_logs
-RESULTS: items:
-    - timestamp: "2026-06-10T11:08:16.793000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/jimeng-test-connection
-        body: '{"access_key_id":"AKLTN2JmMGQ1ODVmZmUwNDc4MTgzYjE2MjkzZjU0OTRhODQ","secret_access_key":"WkRaaU1UVmtZV1JtTmpsak5EUXdZemxoTXpFMlpqTmpPRGN5TVRFeE1qZw=="}'
-      response:
-        status: 200
-        body: '{"success":true,"message":"即梦 API 连通性测试通过，AK/SK 有效"}'
-
-</observation>
-<action>
-**MCPAction**
-NAME: get_network_logs
-ARGUMENTS: {'search': 'vidu', 'reason': '查看Vidu API调用', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_network_logs
-RESULTS: items:
-    - timestamp: "2026-06-10T11:08:20.224000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/api-health-check
-        body: '{"provider":"vidu","api_key":"vda_961107057132445696_nRaxNOEk5dvZN3JfeZcPxveiUjx78q3t","api_base_url":"https://api.vidu.cn"}'
-      response:
-        status: 200
-        body: '{"ok":true,"message":"Vidu API 连通性测试通过"}'
-    - timestamp: "2026-06-10T11:08:54.799000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/vidu-generate-image
-        body: '{"prompt":"现代，中国，\n人工智能（AI）正在深刻改变我们的生活方式。从语音助手到自动驾驶，从医疗诊断到金融分析，AI的应用已经渗透到各个领域。\n然而，随着技术的快速发展，也引发了人们对就业、隐私、安全等问题的担忧。\n如何在享受技术红利的同时，有效规避潜在风险，成为社会各界共同面对的课题。，\n现代建筑，\nT恤，\n日常氛围，\n平视角度，真实自然，\n重复构图，节奏感，\n现代风格，真实场景，\nraw photo，unedited，authentic moment，\nhandheld，slight blur，documentary feel，\n authentic photography，real moment，\n写实风格，摄影级细节","size":"1024x1024","vidu_api_key":"vda_961107057132445696_nRaxNOEk5dvZN3JfeZcPxveiUjx78q3t"}'
-      response:
-        status: 500
-        body: '{"msg":"InvalidWorkerCreation: worker boot error: failed to bootstrap runtime: failed to create the graph: The module''s source code could not be parsed: Expected ''=>'', got '':'' at file:///home/deno/functions/supabase313326034818740224/vidu-generate-image/index.ts:61:27\n\n  serve(async (req: Request): Promise<Response> {\n                            ~","workerKey":"supabase313326034818740224:vidu-generate-image","timestamp":"2026-06-10T11:09:00.606Z"}'
-
-</observation>
-<action>
-**MCPAction**
-NAME: get_network_logs
-ARGUMENTS: {'search': 'sensenova', 'reason': '查看SenseNova API调用', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_network_logs
-RESULTS: items:
-    - timestamp: "2026-06-10T11:08:31.637000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/api-health-check
-        body: '{"provider":"sensenova","api_key":"sk-qUAq9izsIcTHvukmmoJR8BhZIwUJRXTk","api_base_url":"https://token.sensenova.cn/v1"}'
-      response:
-        status: 200
-        body: '{"ok":true,"message":"SenseNova API 连通性测试通过，密钥有效"}'
-    - timestamp: "2026-06-10T11:09:24.815000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/sensenova-generate-image
-        body: '{"prompt":"现代，中国，\n人工智能（AI）正在深刻改变我们的生活方式。从语音助手到自动驾驶，从医疗诊断到金融分析，AI的应用已经渗透到各个领域。\n然而，随着技术的快速发展，也引发了人们对就业、隐私、安全等问题的担忧。\n如何在享受技术红利的同时，有效规避潜在风险，成为社会各界共同面对的课题。，\n现代建筑，\nT恤，\n日常氛围，\n平视角度，真实自然，\n重复构图，节奏感，\n现代风格，真实场景，\nraw photo，unedited，authentic moment，\nhandheld，slight blur，documentary feel，\n authentic photography，real moment，\n写实风格，摄影级细节","size":"1024x1024","sensenova_api_key":"sk-qUAq9izsIcTHvukmmoJR8BhZIwUJRXTk","model":"sensenova-u1-fast","n":1}'
-      response:
-        status: 200
-        body: '{"error":"请求失败: Signal timed out."}'
-
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[55, 75], user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts:
-    55   if (w === h) return "1:1";
-    56   if (w / h < 0.8) return "3:4";
-    57   if (w / h > 1.3) return "4:3";
-    58   return "9:16";
-    59 }
-    60 
-    61 serve(async (req: Request): Promise<Response> {
-    62   if (req.method === "OPTIONS") {
-    63     return new Response(null, { status: 204, headers: corsHeaders() });
-    64   }
-    65 
-    66   if (req.method !== "POST") {
-    67     return new Response(
-    68       JSON.stringify({ error: "Method Not Allowed" }),
-    69       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-    70     );
-    71   }
-    72 
-    73   let body: Record<string, unknown>;
-    74   try {
-    75     body = await req.json();
-
-
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=None, user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts:
-     1 import { serve } from "https://deno.land/std/http/server.ts";
-     2 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-     3 
-     4 const supabase = createClient(
-     5   Deno.env.get("SUPABASE_URL")!,
-     6   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-     7 );
-     8 
-     9 function corsHeaders(): Record<string, string> {
-    10   return {
-    11     "Access-Control-Allow-Origin": "*",
-    12     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    13     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    14   };
-    15 }
-    16 
-    17 /** Upload remote image URL to Supabase Storage */
-    18 async function streamImageToStorage(imageUrl: string): Promise<string | null> {
-    19   try {
-    20     const response = await fetch(imageUrl);
-    21     if (!response.ok) {
-    22       console.error(`Fetch image failed: ${response.status}`);
-    23       return null;
-    24     }
-    25     const contentType = response.headers.get("content-type") ?? "image/png";
-    26     const ext = contentType.includes("jpg") || contentType.includes("jpeg") ? "jpg" : "png";
-    27     const filePath = `uploads/${crypto.randomUUID()}.${ext}`;
-    28     const { error } = await supabase.storage
-    29       .from("generated-videos")
-    30       .upload(filePath, response.body!, {
-    31         contentType,
-    32         cacheControl: "no-cache",
-    33         upsert: false,
-    34       });
-    35     if (error) {
-    36       console.error("Upload to storage error:", error);
-    37       return null;
-    38     }
-    39     const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);
-    40     return urlData.publicUrl;
-    41   } catch (err) {
-    42     console.error("streamImageToStorage error:", err);
-    43     return null;
-    44   }
-    45 }
-    46 
-    47 /** Convert size to Vidu aspect_ratio */
-    48 function sizeToAspectRatio(size: string): string {
-    49   const parts = size.split("x").map((s) => parseInt(s.trim(), 10));
-    50   if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return "9:16";
-    51   const w = parts[0];
-    52   const h = parts[1];
-    53   if (w === 720 && h === 1280) return "9:16";
-    54   if (w === 1280 && h === 720) return "16:9";
-    55   if (w === h) return "1:1";
-    56   if (w / h < 0.8) return "3:4";
-    57   if (w / h > 1.3) return "4:3";
-    58   return "9:16";
-    59 }
-    60 
-    61 serve(async (req: Request): Promise<Response> {
-    62   if (req.method === "OPTIONS") {
-    63     return new Response(null, { status: 204, headers: corsHeaders() });
-    64   }
-    65 
-    66   if (req.method !== "POST") {
-    67     return new Response(
-    68       JSON.stringify({ error: "Method Not Allowed" }),
-    69       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-    70     );
-    71   }
-    72 
-    73   let body: Record<string, unknown>;
-    74   try {
-    75     body = await req.json();
-    76   } catch {
-    77     return new Response(
-    78       JSON.stringify({ error: "Invalid request body" }),
-    79       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-    80     );
-    81   }
-    82 
-    83   const userApiKey = (body.vidu_api_key as string) ?? "";
-    84   const envApiKey = Deno.env.get("VIDU_API_KEY") ?? "";
-    85   const apiKey = userApiKey || envApiKey;
-    86 
-    87   if (!apiKey) {
-    88     return new Response(
-    89       JSON.stringify({ error: "未配置 Vidu API Key，请在设置中填写" }),
-    90       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-    91     );
-    92   }
-    93 
-    94   const prompt = (body.prompt as string) ?? "";
-    95   if (!prompt) {
-    96     return new Response(
-    97       JSON.stringify({ error: "缺少 prompt 参数" }),
-    98       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-    99     );
-   100   }
-   101 
-   102   const size = (body.size as string) ?? "720x1280";
-   103   const model = (body.model as string) ?? "viduq2";
-   104   const referenceImageUrl = (body.reference_image_url as string) ?? undefined;
-   105 
-   106   const aspectRatio = sizeToAspectRatio(size);
-   107   const resolution = model.startsWith("viduq2") ? "1080p" : "1080p";
-   108 
-   109   const viduBody: Record<string, unknown> = {
-   110     model,
-   111     prompt,
-   112     aspect_ratio: aspectRatio,
-   113     resolution,
-   114   };
-   115 
-   116   if (referenceImageUrl) {
-   117     viduBody.images = [referenceImageUrl];
-   118   }
-   119 
-   120   try {
-   121     const upstream = await fetch("https://api.vidu.cn/ent/v2/reference2image", {
-   122       method: "POST",
-   123       headers: {
-   124         "Content-Type": "application/json",
-   125         "Authorization": `Token ${apiKey}`,
-   126       },
-   127       body: JSON.stringify(viduBody),
-   128     });
-   129 
-   130     const result = await upstream.json();
-   131 
-   132     if (!upstream.ok) {
-   133       const msg = result.err_code ?? result.message ?? JSON.stringify(result);
-   134       return new Response(
-   135         JSON.stringify({ error: `Vidu 图片生成失败: ${msg}` }),
-   136         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   137       );
-   138     }
-   139 
-   140     const taskId = result.task_id;
-   141     if (taskId) {
-   142       return new Response(
-   143         JSON.stringify({ imageId: String(taskId), status: result.state ?? "created" }),
-   144         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   145       );
-   146     }
-   147 
-   148     return new Response(
-   149       JSON.stringify({ error: `未知响应格式: ${JSON.stringify(result).slice(0, 200)}` }),
-   150       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   151     );
-   152   } catch (err) {
-   153     const msg = err instanceof Error ? err.message : String(err);
-   154     return new Response(
-   155       JSON.stringify({ error: `请求失败: ${msg}` }),
-   156       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   157     );
-   158   }
-   159 });
-   160 
-
-
-</observation>
-<action>
-**FileEditAction**
-Path: [/workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts]
-Thought: 
-Command: str_replace
-Old String: ```
-serve(async (req: Request): Promise<Response> {
-```
-New String: ```
-serve(async (req) => {
-```
-
-</action>
-<observation>
-The file /workspace/app-bmyoogysfs3l/supabase/functions/vidu-generate-image/index.ts has been edited.
-
-</observation>
-<action>
-**FileEditAction**
-Path: [/workspace/app-bmyoogysfs3l/supabase/functions/sensenova-generate-image/index.ts]
-Thought: 
-Command: str_replace
-Old String: ```
-      signal: AbortSignal.timeout(30000),
-```
-New String: ```
-      signal: AbortSignal.timeout(90000),
-```
-
-</action>
-<observation>
-The file /workspace/app-bmyoogysfs3l/supabase/functions/sensenova-generate-image/index.ts has been edited.
-
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -n "jimeng" src/services/video.ts
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-89:  return p?.provider || mcfg.video?.provider || 'jimeng';
-109:  return getVideoProvider() === 'jimeng' && !!getJimengApiKey();
-136:  // jimeng 不支持图片生成，但用户若误选，也允许使用（回退到可灵）
-137:  if (provider === 'jimeng') return true;
-354:  const jimengKey = getJimengApiKey();
-370:  } else if (jimengKey) {
-371:    functionName = 'jimeng-create-video';
-372:    body.jimeng_api_key = jimengKey;
-388:  const jimengKey = getJimengApiKey();
-404:  } else if (jimengKey) {
-405:    functionName = 'jimeng-create-video';
-406:    body.jimeng_api_key = jimengKey;
-421:  const jimengKey = getJimengApiKey();
-422:  if (jimengKey) {
-445:  const jimengKey = getJimengApiKey();
-456:  } else if (jimengKey) {
-457:    functionName = 'jimeng-query-video';
-458:    body.jimeng_api_key = jimengKey;
-514:  // 可灵内置AI（默认，jimeng 不支持图片生成也走此分支）
-576:  // 可灵内置AI（默认，jimeng 不支持图片生成也走此分支）
-637:  if (provider === 'jimeng') {
-643:    const data = await invokeFunction('jimeng-generate-image', {
-723:  if (provider === 'jimeng') {
-729:    return await invokeFunction('jimeng-query-image', {
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/src/services/video.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[630, 660], user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/src/services/video.ts is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/services/video.ts:
-   630 export async function startImageGenerationWithProfile(
-   631   params: { prompt: string; size?: string; referenceImageUrl?: string },
-   632   profile: { provider: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> },
-   633 ): Promise<{ imageId: string; status: string }> {
-   634   const { provider, apiKey, apiBaseUrl, extra } = profile;
-   635 
-   636   // Jimeng 自定义API（即梦4.0使用火山引擎AK/SK签名认证）
-   637   if (provider === 'jimeng') {
-   638     const ak = extra?.accessKeyId?.trim();
-   639     const sk = extra?.secretAccessKey?.trim();
-   640     if (!ak || !sk) {
-   641       throw new Error('即梦 API 需要配置 Access Key ID 和 Secret Access Key');
-   642     }
-   643     const data = await invokeFunction('jimeng-generate-image', {
-   644       prompt: params.prompt,
-   645       size: params.size ?? '1024x1024',
-   646       access_key_id: ak,
-   647       secret_access_key: sk,
-   648     }) as { imageId?: string; status?: string; error?: string };
-   649     if (data.error) throw new Error(data.error);
-   650     if (!data.imageId) throw new Error('即梦未返回图片任务ID');
-   651     return { imageId: data.imageId, status: data.status ?? 'pending' };
-   652   }
-   653 
-   654   // Vidu 自定义API
-   655   if (provider === 'vidu' && apiKey) {
-   656     const data = await invokeFunction('vidu-generate-image', {
-   657       prompt: params.prompt,
-   658       size: params.size ?? '720x1280',
-   659       reference_image_url: params.referenceImageUrl,
-   660       vidu_api_key: apiKey.trim(),
-
-
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -rn "startImageGenerationWithProfile" src/
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-src/services/video.ts:630:export async function startImageGenerationWithProfile(
-src/components/ImagePromptPreviewDialog.tsx:11:import { startImageGenerationWithProfile, queryImageGenerationWithProfile } from '@/services/video';
-src/components/ImagePromptPreviewDialog.tsx:262:          const res = await startImageGenerationWithProfile(
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/src/components/ImagePromptPreviewDialog.tsx', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[230, 310], user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/src/components/ImagePromptPreviewDialog.tsx is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/components/ImagePromptPreviewDialog.tsx:
-   230 
-   231   const handleCompareGenerate = useCallback(async () => {
-   232     const prompt = optimizedPrompt.trim();
-   233     if (!prompt) {
-   234       toast.error('请先优化提示词');
-   235       return;
-   236     }
-   237 
-   238     const profiles = getCompareProfiles();
-   239     if (profiles.length === 0) {
-   240       toast.error('未找到任何图片模型配置，请先在API设置中添加');
-   241       return;
-   242     }
-   243 
-   244     setIsComparing(true);
-   245     setCompareProgress(5);
-   246 
-   247     // 初始化结果状态
-   248     const initialResults: CompareResult[] = profiles.map((p) => ({
-   249       id: p.id,
-   250       provider: p.provider,
-   251       providerLabel: p.providerLabel,
-   252       profileName: p.profileName,
-   253       status: 'pending',
-   254       progress: 0,
-   255     }));
-   256     setCompareResults(initialResults);
-   257 
-   258     // 并行提交所有生成请求
-   259     const submitted = await Promise.all(
-   260       profiles.map(async (p, idx) => {
-   261         try {
-   262           const res = await startImageGenerationWithProfile(
-   263             { prompt, size: '1024x1024' },
-   264             { provider: p.provider, apiKey: p.apiKey, apiBaseUrl: p.apiBaseUrl, extra: p.extra },
-   265           );
-   266           setCompareResults((prev) => {
-   267             const next = [...prev];
-   268             next[idx] = { ...next[idx], status: 'in_progress', progress: 15 };
-   269             return next;
-   270           });
-   271           return { idx, imageId: res.imageId, profile: p, error: null as string | null };
-   272         } catch (err) {
-   273           const msg = err instanceof Error ? err.message : String(err);
-   274           setCompareResults((prev) => {
-   275             const next = [...prev];
-   276             next[idx] = { ...next[idx], status: 'failed', error: msg };
-   277             return next;
-   278           });
-   279           return { idx, imageId: '', profile: p, error: msg };
-   280         }
-   281       }),
-   282     );
-   283 
-   284     // 并行轮询查询
-   285     const pending = submitted.filter((s) => !s.error);
-   286     let attempts = 0;
-   287     const maxAttempts = 60;
-   288 
-   289     while (pending.length > 0 && attempts < maxAttempts) {
-   290       const delayMs = attempts < 5 ? 1000 : 3000;
-   291       await new Promise((r) => setTimeout(r, delayMs));
-   292 
-   293       const completedThisRound: number[] = [];
-   294 
-   295       await Promise.all(
-   296         pending.map(async (item) => {
-   297           try {
-   298             const q = await queryImageGenerationWithProfile(item.imageId, {
-   299               provider: item.profile.provider,
-   300               apiKey: item.profile.apiKey,
-   301               apiBaseUrl: item.profile.apiBaseUrl,
-   302               extra: item.profile.extra,
-   303             });
-   304             const progress = Math.min(15 + Math.round((attempts / maxAttempts) * 80), 95);
-   305 
-   306             if (q.status === 'completed' && q.publicUrl) {
-   307               completedThisRound.push(item.idx);
-   308               setCompareResults((prev) => {
-   309                 const next = [...prev];
-   310                 next[item.idx] = {
-
-
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -rn "getCompareProfiles" src/
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-src/components/ImagePromptPreviewDialog.tsx:71:function getCompareProfiles(): Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> }> {
-src/components/ImagePromptPreviewDialog.tsx:238:    const profiles = getCompareProfiles();
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/src/components/ImagePromptPreviewDialog.tsx', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[71, 130], user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/src/components/ImagePromptPreviewDialog.tsx is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/components/ImagePromptPreviewDialog.tsx:
-    71 function getCompareProfiles(): Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> }> {
-    72   const stored = localStorage.getItem('api_config');
-    73   const results: Array<{ id: string; provider: string; providerLabel: string; profileName: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> }> = [];
-    74 
-    75   // 始终加入内置可灵（平台内置AI）
-    76   results.push({
-    77     id: 'builtin-kling',
-    78     provider: 'kling',
-    79     providerLabel: PROVIDER_LABELS.kling,
-    80     profileName: '可灵内置AI',
-    81   });
-    82 
-    83   if (!stored) return results;
-    84   try {
-    85     const cfg = JSON.parse(stored) as { modelConfig?: { image?: { profiles?: CustomApiProfile[] } } };
-    86     const profiles = cfg.modelConfig?.image?.profiles ?? [];
-    87 
-    88     // 自定义API profiles：按 provider 去重，保留最新一个
-    89     const latestByProvider = new Map<string, CustomApiProfile>();
-    90     for (const p of profiles) {
-    91       latestByProvider.set(p.provider, p); // 后面的覆盖前面的，保留最新
-    92     }
-    93     for (const p of latestByProvider.values()) {
-    94       results.push({
-    95         id: p.id,
-    96         provider: p.provider,
-    97         providerLabel: PROVIDER_LABELS[p.provider] || p.provider,
-    98         profileName: p.name || PROVIDER_LABELS[p.provider] || p.provider,
-    99         apiKey: p.apiKey,
-   100         apiBaseUrl: p.apiBaseUrl,
-   101         extra: p.extra,
-   102       });
-   103     }
-   104   } catch { /* ignore */ }
-   105   return results;
-   106 }
-   107 
-   108 export default function ImagePromptPreviewDialog({ open, onOpenChange, onGenerateImage }: ImagePromptPreviewDialogProps) {
-   109   const [originalText, setOriginalText] = useState('');
-   110   const [optimizedPrompt, setOptimizedPrompt] = useState('');
-   111   const [isOptimizing, setIsOptimizing] = useState(false);
-   112   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-   113   const [generateProgress, setGenerateProgress] = useState(0);
-   114   const [generateStatusHint, setGenerateStatusHint] = useState('');
-   115   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-   116   const [showStrategyEditor, setShowStrategyEditor] = useState(false);
-   117   const [strategy, setStrategy] = useState(getStoredStrategy);
-   118   const fileInputRef = useRef<HTMLInputElement>(null);
-   119 
-   120   // 多模型对比状态
-   121   const [compareResults, setCompareResults] = useState<CompareResult[]>([]);
-   122   const [isComparing, setIsComparing] = useState(false);
-   123   const [compareProgress, setCompareProgress] = useState(0);
-   124 
-   125   // 图片灯箱
-   126   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-   127 
-   128   const handleOptimize = useCallback(async () => {
-   129     const text = originalText.trim();
-   130     if (!text) {
-
-
-</observation>
-<action>
-FileReadAction(path='/workspace/app-bmyoogysfs3l/supabase/functions/jimeng-generate-image/index.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=None, user_hidden=False)
-</action>
-<observation>
-[Read from /workspace/app-bmyoogysfs3l/supabase/functions/jimeng-generate-image/index.ts is successful.]
-Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/supabase/functions/jimeng-generate-image/index.ts:
-     1 import { serve } from "https://deno.land/std/http/server.ts";
-     2 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-     3 
-     4 const supabase = createClient(
-     5   Deno.env.get("SUPABASE_URL")!,
-     6   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-     7 );
-     8 
-     9 function corsHeaders(): Record<string, string> {
-    10   return {
-    11     "Access-Control-Allow-Origin": "*",
-    12     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    13     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    14   };
-    15 }
-    16 
-    17 /** HMAC-SHA256 */
-    18 async function hmacSha256(key: ArrayBuffer, data: string): Promise<ArrayBuffer> {
-    19   const cryptoKey = await crypto.subtle.importKey(
-    20     "raw",
-    21     key,
-    22     { name: "HMAC", hash: "SHA-256" },
-    23     false,
-    24     ["sign"],
-    25   );
-    26   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
-    27 }
-    28 
-    29 /** Hex encode */
-    30 function hexEncode(buf: ArrayBuffer): string {
-    31   return Array.from(new Uint8Array(buf))
-    32     .map((b) => b.toString(16).padStart(2, "0"))
-    33     .join("");
-    34 }
-    35 
-    36 /** Hash with SHA-256 */
-    37 async function sha256Hash(data: string): Promise<string> {
-    38   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
-    39   return hexEncode(buf);
-    40 }
-    41 
-    42 /**
-    43  * Build Volcengine Authorization header using HMAC-SHA256 signing.
-    44  */
-    45 async function buildAuthorization(
-    46   ak: string,
-    47   sk: string,
-    48   method: string,
-    49   uri: string,
-    50   query: string,
-    51   headers: Record<string, string>,
-    52   payload: string,
-    53 ): Promise<string> {
-    54   const date = (headers["X-Date"] ?? headers["x-date"] ?? "").trim();
-    55   if (!date) throw new Error("Missing X-Date header for signing");
-    56   const dateShort = date.slice(0, 8);
-    57   const region = "cn-north-1";
-    58   const service = "cv";
-    59 
-    60   const signedHeaders = Object.keys(headers).map((k) => k.toLowerCase()).sort().join(";");
-    61 
-    62   const canonicalHeaders = Object.entries(headers)
-    63     .sort(([a], [b]) => a.localeCompare(b))
-    64     .map(([k, v]) => `${k.toLowerCase()}:${v.trim()}\n`)
-    65     .join("");
-    66 
-    67   const payloadHash = await sha256Hash(payload);
-    68 
-    69   const canonicalRequest = [
-    70     method,
-    71     uri,
-    72     query,
-    73     canonicalHeaders,
-    74     signedHeaders,
-    75     payloadHash,
-    76   ].join("\n");
-    77 
-    78   const algorithm = "HMAC-SHA256";
-    79   const credentialScope = `${dateShort}/${region}/${service}/request`;
-    80   const canonicalRequestHash = await sha256Hash(canonicalRequest);
-    81 
-    82   const stringToSign = `${algorithm}\n${date}\n${credentialScope}\n${canonicalRequestHash}`;
-    83 
-    84   let kDate = await hmacSha256(new TextEncoder().encode(sk), dateShort);
-    85   let kRegion = await hmacSha256(kDate, region);
-    86   let kService = await hmacSha256(kRegion, service);
-    87   let kSigning = await hmacSha256(kService, "request");
-    88   const signature = hexEncode(await hmacSha256(kSigning, stringToSign));
-    89 
-    90   return `${algorithm} Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-    91 }
-    92 
-    93 /** Upload remote image to Supabase Storage */
-    94 async function uploadImageToStorage(imageUrl: string): Promise<string | null> {
-    95   try {
-    96     const response = await fetch(imageUrl);
-    97     if (!response.ok) {
-    98       console.error(`Fetch image failed: ${response.status}`);
-    99       return null;
-   100     }
-   101     const contentType = response.headers.get("content-type") ?? "image/png";
-   102     const ext = contentType.includes("jpg") || contentType.includes("jpeg") ? "jpg" : "png";
-   103     const filePath = `uploads/${crypto.randomUUID()}.${ext}`;
-   104     const { data, error } = await supabase.storage
-   105       .from("generated-videos")
-   106       .upload(filePath, response.body!, {
-   107         contentType,
-   108         cacheControl: "no-cache",
-   109         upsert: false,
-   110       });
-   111     if (error) {
-   112       console.error("Upload to storage error:", error);
-   113       return null;
-   114     }
-   115     const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);
-   116     return urlData.publicUrl;
-   117   } catch (err) {
-   118     console.error("uploadImageToStorage error:", err);
-   119     return null;
-   120   }
-   121 }
-   122 
-   123 serve(async (req: Request): Promise<Response> => {
-   124   if (req.method === "OPTIONS") {
-   125     return new Response(null, { status: 204, headers: corsHeaders() });
-   126   }
-   127 
-   128   if (req.method !== "POST") {
-   129     return new Response(
-   130       JSON.stringify({ error: "Method Not Allowed" }),
-   131       { status: 405, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   132     );
-   133   }
-   134 
-   135   let accessKeyId = "";
-   136   let secretAccessKey = "";
-   137   let prompt = "";
-   138   let size = "1024x1024";
-   139 
-   140   try {
-   141     const body = await req.json();
-   142     accessKeyId = (body.access_key_id as string) ?? "";
-   143     secretAccessKey = (body.secret_access_key as string) ?? "";
-   144     prompt = (body.prompt as string) ?? "";
-   145     size = (body.size as string) ?? "1024x1024";
-   146   } catch {
-   147     return new Response(
-   148       JSON.stringify({ error: "Invalid request body" }),
-   149       { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   150     );
-   151   }
-   152 
-   153   if (!accessKeyId || !secretAccessKey) {
-   154     return new Response(
-   155       JSON.stringify({ error: "缺少 Access Key ID 或 Secret Access Key" }),
-   156       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   157     );
-   158   }
-   159 
-   160   if (!prompt) {
-   161     return new Response(
-   162       JSON.stringify({ error: "缺少 prompt 参数" }),
-   163       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   164     );
-   165   }
-   166 
-   167   const parts = size.split("x").map((s) => parseInt(s.trim(), 10));
-   168   const width = parts.length === 2 && !isNaN(parts[0]) ? parts[0] : 1024;
-   169   const height = parts.length === 2 && !isNaN(parts[1]) ? parts[1] : 1024;
-   170   const area = width * height;
-   171 
-   172   const endpoint = "https://visual.volcengineapi.com";
-   173   const uri = "/";
-   174   const query = "Action=CVSync2AsyncSubmitTask&Version=2022-08-31";
-   175   const payload = JSON.stringify({
-   176     req_key: "jimeng_t2i_v40",
-   177     prompt,
-   178     size: area,
-   179     width,
-   180     height,
-   181     force_single: true,
-   182   });
-   183 
-   184   const now = new Date();
-   185   const xDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "").slice(0, 15) + "Z";
-   186   const headers: Record<string, string> = {
-   187     "Content-Type": "application/json",
-   188     "Host": "visual.volcengineapi.com",
-   189     "X-Date": xDate,
-   190   };
-   191 
-   192   try {
-   193     const authorization = await buildAuthorization(
-   194       accessKeyId,
-   195       secretAccessKey,
-   196       "POST",
-   197       uri,
-   198       query,
-   199       headers,
-   200       payload,
-   201     );
-   202 
-   203     const resp = await fetch(`${endpoint}${uri}?${query}`, {
-   204       method: "POST",
-   205       headers: {
-   206         ...headers,
-   207         "Authorization": authorization,
-   208       },
-   209       body: payload,
-   210       signal: AbortSignal.timeout(30000),
-   211     });
-   212 
-   213     const result = await resp.json();
-   214 
-   215     // 火山引擎错误码处理
-   216     if (result.code !== 10000 && result.code !== "10000") {
-   217       const code = result?.ResponseMetadata?.Error?.Code ?? result?.code ?? "";
-   218       const msg = result?.ResponseMetadata?.Error?.Message ?? result?.message ?? JSON.stringify(result).slice(0, 200);
-   219       return new Response(
-   220         JSON.stringify({ error: `即梦图片生成失败（${code}）: ${msg}` }),
-   221         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   222       );
-   223     }
-   224 
-   225     // 异步任务模式：返回 task_id，由查询接口获取结果
-   226     const taskId = result?.data?.task_id ?? result?.task_id ?? null;
-   227     if (taskId) {
-   228       return new Response(
-   229         JSON.stringify({ imageId: String(taskId), status: "pending" }),
-   230         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   231       );
-   232     }
-   233 
-   234     return new Response(
-   235       JSON.stringify({ error: `未知响应格式: ${JSON.stringify(result).slice(0, 200)}` }),
-   236       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   237     );
-   238   } catch (err) {
-   239     return new Response(
-   240       JSON.stringify({ error: `即梦图片生成失败: ${(err as Error).message}` }),
-   241       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
-   242     );
-   243   }
-   244 });
-   245 
-
-
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -n "serve(async" supabase/functions/*/index.ts
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-supabase/functions/api-health-check/index.ts:11:serve(async (req: Request): Promise<Response> => {
-supabase/functions/clone-voice/index.ts:149:serve(async (req: Request): Promise<Response> => {
-supabase/functions/jimeng-create-video/index.ts:56:serve(async (req: Request): Promise<Response> {
-supabase/functions/jimeng-generate-image/index.ts:123:serve(async (req: Request): Promise<Response> => {
-supabase/functions/jimeng-query-image/index.ts:120:serve(async (req: Request): Promise<Response> => {
-supabase/functions/jimeng-query-video/index.ts:47:serve(async (req: Request): Promise<Response> {
-supabase/functions/jimeng-test-connection/index.ts:96:serve(async (req: Request): Promise<Response> => {
-supabase/functions/kling-create-video/index.ts:25:serve(async (req) => {
-supabase/functions/kling-omni-image-query/index.ts:58:serve(async (req) => {
-supabase/functions/kling-omni-image-submit/index.ts:11:serve(async (req) => {
-supabase/functions/kling-query-video/index.ts:60:serve(async (req) => {
-supabase/functions/optimize-prompt/index.ts:86:serve(async (req) => {
-supabase/functions/sensenova-generate-image/index.ts:35:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sensenova-query-image/index.ts:11:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-create-video/index.ts:21:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-query-video/index.ts:30:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-remix-video/index.ts:21:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-video-from-reference/index.ts:21:serve(async (req: Request): Promise<Response> => {
-supabase/functions/tts-minimax/index.ts:43:serve(async (req: Request): Promise<Response> => {
-supabase/functions/vidu-create-video/index.ts:61:serve(async (req: Request): Promise<Response> {
-supabase/functions/vidu-generate-image/index.ts:61:serve(async (req) => {
-supabase/functions/vidu-query-image/index.ts:47:serve(async (req: Request): Promise<Response> {
-supabase/functions/vidu-query-video/index.ts:46:serve(async (req: Request): Promise<Response> {
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-AgentThinkAction(thought='用户反馈三个问题：\n1. 新增API配置弹窗：默认显示"即梦"但输入项是通用格式（应显示AK/SK），应改为默认"请选择模型提供商"且确定灰显\n2. 点击窗口外部不消失（Dialog behavior）\n3. Vidu仍然报错 + 即梦缺失\n\n需要检查：\n- emptyProfile() 默认值\n- 弹窗中provider切换时UI更新的逻辑\n- getCompareProfiles 读取逻辑\n- vidu-generate-image 是否还有其他语法错误\n- 即梦在图片模型中的数据是否正确保存和读取', action=<ActionType.THINK: 'think'>)
-</action>
-<observation>
-AgentThinkObservation(content='Your thought has been logged.', observation=<ObservationType.THINK: 'think'>)
-</observation>
-<action>
-**MCPAction**
-NAME: get_edgefunction_logs
-ARGUMENTS: {'function_name': 'vidu-generate-image', 'search': 'error', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_edgefunction_logs
-RESULTS: function_name: vidu-generate-image
-search: error
-truncated: false
-logs: []
-
-</observation>
-<action>
-**MCPAction**
-NAME: get_edgefunction_logs
-ARGUMENTS: {'function_name': 'vidu-generate-image', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_edgefunction_logs
-RESULTS: function_name: vidu-generate-image
-truncated: false
-logs:
-    - |
-      2026-06-10T15:47:50.475Z INFO [0845e42f-ee6b-4363-a445-9ea7d7c17471] Listening on http://localhost:9999/
-
-</observation>
-<action>
-**MCPAction**
-NAME: get_network_logs
-ARGUMENTS: {'search': 'vidu-generate-image', 'reason': '查看最新的Vidu生成请求响应', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_network_logs
-RESULTS: items:
-    - timestamp: "2026-06-10T15:47:50.248000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/vidu-generate-image
-        body: |4
-            ... (truncated) ...
-      response:
-        status: 200
-        body: '{"imageId":"962319951861948416","status":"created"}'
-
-</observation>
-<action>
-**MCPAction**
-NAME: get_network_logs
-ARGUMENTS: {'search': 'vidu-query-image', 'reason': '查看Vidu查询请求', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool'}
-</action>
-<observation>
-**MCPObservation**
-NAME: get_network_logs
-RESULTS: items:
-    - timestamp: "2026-06-10T15:48:04.070000Z"
-      request:
-        method: POST
-        url: https://backend.appmiaoda.com/projects/supabase313326034818740224/functions/v1/vidu-query-image
-        body: '{"image_id":"962319951861948416","vidu_api_key":"vda_961107057132445696_nRaxNOEk5dvZN3JfeZcPxveiUjx78q3t"}'
-      response:
-        status: 500
-        body: '{"msg":"InvalidWorkerCreation: worker boot error: failed to bootstrap runtime: failed to create the graph: The module''s source code could not be parsed: Expected ''=>'', got '':'' at file:///home/deno/functions/supabase313326034818740224/vidu-query-image/index.ts:47:27\n\n  serve(async (req: Request): Promise<Response> {\n                            ~","workerKey":"supabase313326034818740224:vidu-query-image","timestamp":"2026-06-10T15:48:04.582Z"}'
-
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -n "serve(async (req: Request): Promise<Response> {" supabase/functions/*/index.ts
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-supabase/functions/jimeng-create-video/index.ts:56:serve(async (req: Request): Promise<Response> {
-supabase/functions/jimeng-query-video/index.ts:47:serve(async (req: Request): Promise<Response> {
-supabase/functions/vidu-create-video/index.ts:61:serve(async (req: Request): Promise<Response> {
-supabase/functions/vidu-query-image/index.ts:47:serve(async (req: Request): Promise<Response> {
-supabase/functions/vidu-query-video/index.ts:46:serve(async (req: Request): Promise<Response> {
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && sed -i 's/serve(async (req: Request): Promise<Response> {/serve(async (req) => {/g' supabase/functions/jimeng-create-video/index.ts supabase/functions/jimeng-query-video/index.ts supabase/functions/vidu-create-video/index.ts supabase/functions/vidu-query-image/index.ts supabase/functions/vidu-query-video/index.ts
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-**CmdRunAction (source=EventSource.AGENT, is_input=False)**
-COMMAND:
-cd /workspace/app-bmyoogysfs3l && grep -n "serve(async" supabase/functions/*/index.ts
-</action>
-<observation>
-**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
-  "exit_code": 0,
-  "pid": -1,
-  "username": null,
-  "hostname": null,
-  "working_dir": "/workspace/app-bmyoogysfs3l",
-  "py_interpreter_path": null,
-  "prefix": "",
-  "suffix": "\n[The command completed with exit code 0.]"
-})**
---BEGIN AGENT OBSERVATION--
-supabase/functions/api-health-check/index.ts:11:serve(async (req: Request): Promise<Response> => {
-supabase/functions/clone-voice/index.ts:149:serve(async (req: Request): Promise<Response> => {
-supabase/functions/jimeng-create-video/index.ts:56:serve(async (req) => {
-supabase/functions/jimeng-generate-image/index.ts:123:serve(async (req: Request): Promise<Response> => {
-supabase/functions/jimeng-query-image/index.ts:120:serve(async (req: Request): Promise<Response> => {
-supabase/functions/jimeng-query-video/index.ts:47:serve(async (req) => {
-supabase/functions/jimeng-test-connection/index.ts:96:serve(async (req: Request): Promise<Response> => {
-supabase/functions/kling-create-video/index.ts:25:serve(async (req) => {
-supabase/functions/kling-omni-image-query/index.ts:58:serve(async (req) => {
-supabase/functions/kling-omni-image-submit/index.ts:11:serve(async (req) => {
-supabase/functions/kling-query-video/index.ts:60:serve(async (req) => {
-supabase/functions/optimize-prompt/index.ts:86:serve(async (req) => {
-supabase/functions/sensenova-generate-image/index.ts:35:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sensenova-query-image/index.ts:11:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-create-video/index.ts:21:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-query-video/index.ts:30:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-remix-video/index.ts:21:serve(async (req: Request): Promise<Response> => {
-supabase/functions/sora-video-from-reference/index.ts:21:serve(async (req: Request): Promise<Response> => {
-supabase/functions/tts-minimax/index.ts:43:serve(async (req: Request): Promise<Response> => {
-supabase/functions/vidu-create-video/index.ts:61:serve(async (req) => {
-supabase/functions/vidu-generate-image/index.ts:61:serve(async (req) => {
-supabase/functions/vidu-query-image/index.ts:47:serve(async (req) => {
-supabase/functions/vidu-query-video/index.ts:46:serve(async (req) => {
-[The command completed with exit code 0.]
-[Current working directory: /workspace/app-bmyoogysfs3l]
---END AGENT OBSERVATION--
-</observation>
-<action>
-TodoAction(todos=[TodoItem(id='1', status='in_progress', priority='high', content='修复所有 vidu/jimeng Edge Function 的 serve 语法错误并部署', details='', group=None, agent_name=None), TodoItem(id='2', status='pending', priority='high', content='修改 emptyProfile() 默认 provider 为空字符串，select 增加默认提示选项', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority='high', content='确定按钮在未选择提供商时灰显', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='medium', content='检查 Dialog 点击外部关闭行为', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='调试即梦在多模型对比中缺失的问题', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='medium', content='运行测试和 lint 验证', details='', group=None, agent_name=None)], command='create', thought='', action=<ActionType.TODO: 'todo'>, content='')
-</action>
-<observation>
-TodoObservation(content='<system-reminder>\nYour todo list has changed. Here are the latest contents of your todo list:\n\n1. 修复所有 vidu/jimeng Edge Function 的 serve 语法错误并部署 *high* [in_progress]\n\n2. 修改 emptyProfile() 默认 provider 为空字符串，select 增加默认提示选项 *high* [pending]\n\n3. 确定按钮在未选择提供商时灰显 *high* [pending]\n\n4. 检查 Dialog 点击外部关闭行为 *medium* [pending]\n\n5. 调试即梦在多模型对比中缺失的问题 *high* [pending]\n\n6. 运行测试和 lint 验证 *medium* [pending]\n</system-reminder>', state=TodoState(items=[TodoItem(id='1', status='in_progress', priority='high', content='修复所有 vidu/jimeng Edge Function 的 serve 语法错误并部署', details='', group=None, agent_name=None), TodoItem(id='2', status='pending', priority='high', content='修改 emptyProfile() 默认 provider 为空字符串，select 增加默认提示选项', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority='high', content='确定按钮在未选择提供商时灰显', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='medium', content='检查 Dialog 点击外部关闭行为', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='调试即梦在多模型对比中缺失的问题', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='medium', content='运行测试和 lint 验证', details='', group=None, agent_name=None)], updated_at='2026-06-10T15:53:36.367194+00:00'), system_reminder='', observation=<ObservationType.TODO: 'todo'>)
-</observation>
-<action>
-**MCPAction**
-NAME: supabase_deploy_edge_function
-ARGUMENTS: {'name': 'vidu-query-image', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool', 'files': [{'path': '/workspace/app-bmyoogysfs3l/supabase/functions/vidu-query-image/index.ts', 'name': 'index.ts', 'content': 'import { serve } from "https://deno.land/std/http/server.ts";\nimport { createClient } from "https://esm.sh/@supabase/supabase-js@2";\n\nconst supabase = createClient(\n  Deno.env.get("SUPABASE_URL")!,\n  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,\n);\n\nfunction corsHeaders(): Record<string, string> {\n  return {\n    "Access-Control-Allow-Origin": "*",\n    "Access-Control-Allow-Methods": "POST, OPTIONS",\n    "Access-Control-Allow-Headers": "Content-Type, Authorization",\n  };\n}\n\n/** Upload remote image URL to Supabase Storage */\nasync function streamImageToStorage(imageUrl: string): Promise<string | null> {\n  try {\n    const response = await fetch(imageUrl);\n    if (!response.ok) {\n      console.error(`Fetch image failed: ${response.status}`);\n      return null;\n    }\n    const contentType = response.headers.get("content-type") ?? "image/png";\n    const ext = contentType.includes("jpg") || contentType.includes("jpeg") ? "jpg" : "png";\n    const filePath = `uploads/${crypto.randomUUID()}.${ext}`;\n    const { error } = await supabase.storage\n      .from("generated-videos")\n      .upload(filePath, response.body!, {\n        contentType,\n        cacheControl: "no-cache",\n        upsert: false,\n      });\n    if (error) {\n      console.error("Upload to storage error:", error);\n      return null;\n    }\n    const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);\n    return urlData.publicUrl;\n  } catch (err) {\n    console.error("streamImageToStorage error:", err);\n    return null;\n  }\n}\n\nserve(async (req) => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(\n      JSON.stringify({ error: "Method Not Allowed" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  let body: Record<string, unknown>;\n  try {\n    body = await req.json();\n  } catch {\n    return new Response(\n      JSON.stringify({ error: "Invalid request body" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const imageId = (body.image_id as string) ?? "";\n  if (!imageId) {\n    return new Response(\n      JSON.stringify({ error: "缺少 image_id 参数" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const userApiKey = (body.vidu_api_key as string) ?? "";\n  const envApiKey = Deno.env.get("VIDU_API_KEY") ?? "";\n  const apiKey = userApiKey || envApiKey;\n\n  if (!apiKey) {\n    return new Response(\n      JSON.stringify({ error: "未配置 Vidu API Key" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  try {\n    const upstream = await fetch(`https://api.vidu.cn/ent/v2/tasks/${imageId}/creations`, {\n      method: "GET",\n      headers: {\n        "Content-Type": "application/json",\n        "Authorization": `Token ${apiKey}`,\n      },\n    });\n\n    const result = await upstream.json();\n\n    if (!upstream.ok) {\n      const msg = result.err_code ?? result.message ?? JSON.stringify(result);\n      return new Response(\n        JSON.stringify({ error: `查询失败: ${msg}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    const state = result.state ?? "unknown";\n\n    if (state === "success") {\n      const creations = result.creations ?? [];\n      const first = creations[0];\n      let publicUrl: string | null = null;\n      if (first?.url) {\n        publicUrl = await streamImageToStorage(String(first.url));\n      }\n      return new Response(\n        JSON.stringify({\n          status: "completed",\n          progress: 100,\n          image_url: publicUrl ?? first?.url ?? null,\n          publicUrl: publicUrl ?? first?.url ?? null,\n          error: null,\n        }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    if (state === "failed") {\n      return new Response(\n        JSON.stringify({\n          status: "failed",\n          progress: 100,\n          image_url: null,\n          publicUrl: null,\n          error: result.err_code ?? "生成失败",\n        }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    const progress = state === "queueing" ? 10 : state === "processing" ? 50 : 5;\n    return new Response(\n      JSON.stringify({\n        status: state,\n        progress,\n        image_url: null,\n        publicUrl: null,\n        error: null,\n      }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  } catch (err) {\n    const msg = err instanceof Error ? err.message : String(err);\n    return new Response(\n      JSON.stringify({ error: `查询失败: ${msg}` }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n});\n'}]}
-</action>
-<observation>
-**MCPObservation**
-NAME: supabase_deploy_edge_function
-RESULTS: {"success":true}
-</observation>
-<action>
-**MCPAction**
-NAME: supabase_deploy_edge_function
-ARGUMENTS: {'name': 'vidu-create-video', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool', 'files': [{'path': '/workspace/app-bmyoogysfs3l/supabase/functions/vidu-create-video/index.ts', 'name': 'index.ts', 'content': 'import { serve } from "https://deno.land/std/http/server.ts";\nimport { createClient } from "https://esm.sh/@supabase/supabase-js@2";\n\nconst supabase = createClient(\n  Deno.env.get("SUPABASE_URL")!,\n  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,\n);\n\nfunction corsHeaders(): Record<string, string> {\n  return {\n    "Access-Control-Allow-Origin": "*",\n    "Access-Control-Allow-Methods": "POST, OPTIONS",\n    "Access-Control-Allow-Headers": "Content-Type, Authorization",\n  };\n}\n\n/** Upload remote video URL to Supabase Storage */\nasync function streamVideoToStorage(videoUrl: string): Promise<string | null> {\n  try {\n    const response = await fetch(videoUrl);\n    if (!response.ok) {\n      console.error(`Fetch video failed: ${response.status}`);\n      return null;\n    }\n    const contentType = response.headers.get("content-type") ?? "video/mp4";\n    const ext = "mp4";\n    const filePath = `uploads/${crypto.randomUUID()}.${ext}`;\n    const { error } = await supabase.storage\n      .from("generated-videos")\n      .upload(filePath, response.body!, {\n        contentType,\n        cacheControl: "no-cache",\n        upsert: false,\n      });\n    if (error) {\n      console.error("Upload to storage error:", error);\n      return null;\n    }\n    const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);\n    return urlData.publicUrl;\n  } catch (err) {\n    console.error("streamVideoToStorage error:", err);\n    return null;\n  }\n}\n\n/** Convert size to Vidu aspect_ratio */\nfunction sizeToAspectRatio(size: string): string {\n  const parts = size.split("x").map((s) => parseInt(s.trim(), 10));\n  if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return "9:16";\n  const w = parts[0];\n  const h = parts[1];\n  if (w === 720 && h === 1280) return "9:16";\n  if (w === 1280 && h === 720) return "16:9";\n  if (w === h) return "1:1";\n  if (w / h < 0.8) return "3:4";\n  if (w / h > 1.3) return "4:3";\n  return "9:16";\n}\n\nserve(async (req) => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(\n      JSON.stringify({ error: "Method Not Allowed" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  let body: Record<string, unknown>;\n  try {\n    body = await req.json();\n  } catch {\n    return new Response(\n      JSON.stringify({ error: "Invalid request body" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const userApiKey = (body.vidu_api_key as string) ?? "";\n  const envApiKey = Deno.env.get("VIDU_API_KEY") ?? "";\n  const apiKey = userApiKey || envApiKey;\n\n  if (!apiKey) {\n    return new Response(\n      JSON.stringify({ error: "未配置 Vidu API Key，请在设置中填写" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const prompt = (body.prompt as string) ?? "";\n  if (!prompt) {\n    return new Response(\n      JSON.stringify({ error: "缺少 prompt 参数" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const size = (body.size as string) ?? "720x1280";\n  const seconds = (body.seconds as number) ?? 5;\n  const inputReferenceUrl = (body.input_reference_url as string) ?? undefined;\n  const mode = (body.mode as string) ?? "text-to-video";\n  const model = (body.model as string) ?? "viduq3-pro";\n\n  const aspectRatio = sizeToAspectRatio(size);\n\n  const viduBody: Record<string, unknown> = {\n    model,\n    prompt,\n    aspect_ratio: aspectRatio,\n    duration: Math.min(seconds, 16),\n  };\n\n  if (inputReferenceUrl && mode === "image-to-video") {\n    viduBody.images = [inputReferenceUrl];\n  }\n\n  try {\n    const upstream = await fetch("https://api.vidu.cn/ent/v2/vidu2video", {\n      method: "POST",\n      headers: {\n        "Content-Type": "application/json",\n        "Authorization": `Token${apiKey}`,\n      },\n      body: JSON.stringify(viduBody),\n    });\n\n    const result = await upstream.json();\n\n    if (!upstream.ok) {\n      const msg = result.err_code ?? result.message ?? JSON.stringify(result);\n      return new Response(\n        JSON.stringify({ error: `Vidu 视频生成失败: ${msg}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    const taskId = result.task_id;\n    if (taskId) {\n      return new Response(\n        JSON.stringify({ videoId: String(taskId), status: result.state ?? "created" }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    return new Response(\n      JSON.stringify({ error: `未知响应格式: ${JSON.stringify(result).slice(0, 200)}` }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  } catch (err) {\n    const msg = err instanceof Error ? err.message : String(err);\n    return new Response(\n      JSON.stringify({ error: `请求失败: ${msg}` }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n});\n'}]}
-</action>
-<observation>
-**MCPObservation**
-NAME: supabase_deploy_edge_function
-RESULTS: {"success":true}
-</observation>
-<action>
-**MCPAction**
-NAME: supabase_deploy_edge_function
-ARGUMENTS: {'name': 'vidu-query-video', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool', 'files': [{'path': '/workspace/app-bmyoogysfs3l/supabase/functions/vidu-query-video/index.ts', 'name': 'index.ts', 'content': 'import { serve } from "https://deno.land/std/http/server.ts";\nimport { createClient } from "https://esm.sh/@supabase/supabase-js@2";\n\nconst supabase = createClient(\n  Deno.env.get("SUPABASE_URL")!,\n  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,\n);\n\nfunction corsHeaders(): Record<string, string> {\n  return {\n    "Access-Control-Allow-Origin": "*",\n    "Access-Control-Allow-Methods": "POST, OPTIONS",\n    "Access-Control-Allow-Headers": "Content-Type, Authorization",\n  };\n}\n\n/** Upload remote video URL to Supabase Storage */\nasync function streamVideoToStorage(videoUrl: string): Promise<string | null> {\n  try {\n    const response = await fetch(videoUrl);\n    if (!response.ok) {\n      console.error(`Fetch video failed: ${response.status}`);\n      return null;\n    }\n    const contentType = response.headers.get("content-type") ?? "video/mp4";\n    const filePath = `uploads/${crypto.randomUUID()}.mp4`;\n    const { error } = await supabase.storage\n      .from("generated-videos")\n      .upload(filePath, response.body!, {\n        contentType,\n        cacheControl: "no-cache",\n        upsert: false,\n      });\n    if (error) {\n      console.error("Upload to storage error:", error);\n      return null;\n    }\n    const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);\n    return urlData.publicUrl;\n  } catch (err) {\n    console.error("streamVideoToStorage error:", err);\n    return null;\n  }\n}\n\nserve(async (req) => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(\n      JSON.stringify({ error: "Method Not Allowed" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  let body: Record<string, unknown>;\n  try {\n    body = await req.json();\n  } catch {\n    return new Response(\n      JSON.stringify({ error: "Invalid request body" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const videoId = (body.video_id as string) ?? "";\n  if (!videoId) {\n    return new Response(\n      JSON.stringify({ error: "缺少 video_id 参数" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const userApiKey = (body.vidu_api_key as string) ?? "";\n  const envApiKey = Deno.env.get("VIDU_API_KEY") ?? "";\n  const apiKey = userApiKey || envApiKey;\n\n  if (!apiKey) {\n    return new Response(\n      JSON.stringify({ error: "未配置 Vidu API Key" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  try {\n    const upstream = await fetch(`https://api.vidu.cn/ent/v2/tasks/${videoId}/creations`, {\n      method: "GET",\n      headers: {\n        "Content-Type": "application/json",\n        "Authorization": `Token${apiKey}`,\n      },\n    });\n\n    const result = await upstream.json();\n\n    if (!upstream.ok) {\n      const msg = result.err_code ?? result.message ?? JSON.stringify(result);\n      return new Response(\n        JSON.stringify({ error: `查询失败: ${msg}` }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    const state = result.state ?? "unknown";\n\n    // Vidu states: created, queueing, processing, success, failed\n    if (state === "success") {\n      const creations = result.creations ?? [];\n      const first = creations[0];\n      let publicUrl: string | null = null;\n      if (first?.url) {\n        publicUrl = await streamVideoToStorage(String(first.url));\n      }\n      return new Response(\n        JSON.stringify({\n          status: "completed",\n          progress: 100,\n          video_url: publicUrl ?? first?.url ?? null,\n          publicUrl: publicUrl ?? first?.url ?? null,\n          error: null,\n        }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    if (state === "failed") {\n      return new Response(\n        JSON.stringify({\n          status: "failed",\n          progress: 100,\n          video_url: null,\n          publicUrl: null,\n          error: result.err_code ?? "生成失败",\n        }),\n        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n      );\n    }\n\n    // created, queueing, processing\n    const progress = state === "queueing" ? 10 : state === "processing" ? 50 : 5;\n    return new Response(\n      JSON.stringify({\n        status: state,\n        progress,\n        video_url: null,\n        publicUrl: null,\n        error: null,\n      }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  } catch (err) {\n    const msg = err instanceof Error ? err.message : String(err);\n    return new Response(\n      JSON.stringify({ error: `查询失败: ${msg}` }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n});\n'}]}
-</action>
-<observation>
-**MCPObservation**
-NAME: supabase_deploy_edge_function
-RESULTS: {"success":true}
-</observation>
-<action>
-**MCPAction**
-NAME: supabase_deploy_edge_function
-ARGUMENTS: {'name': 'jimeng-create-video', 'appId': 'app-bmyoogysfs3l', 'userId': 'user-bbzfrrsmpiio', 'appType': 'Tool', 'files': [{'path': '/workspace/app-bmyoogysfs3l/supabase/functions/jimeng-create-video/index.ts', 'name': 'index.ts', 'content': 'import { serve } from "https://deno.land/std/http/server.ts";\nimport { createClient } from "https://esm.sh/@supabase/supabase-js@2";\n\nconst supabase = createClient(\n  Deno.env.get("SUPABASE_URL")!,\n  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,\n);\n\nfunction corsHeaders(): Record<string, string> {\n  return {\n    "Access-Control-Allow-Origin": "*",\n    "Access-Control-Allow-Methods": "POST, OPTIONS",\n    "Access-Control-Allow-Headers": "Content-Type, Authorization",\n  };\n}\n\n/** Parse size string like "720x1280" into { width, height } */\nfunction parseSize(size: string): { width: number; height: number } {\n  const parts = size.split("x").map((s) => parseInt(s.trim(), 10));\n  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {\n    return { width: parts[0], height: parts[1] };\n  }\n  return { width: 720, height: 1280 };\n}\n\n/** Upload remote video URL to Supabase Storage */\nasync function streamVideoToStorage(videoUrl: string): Promise<string | null> {\n  try {\n    const response = await fetch(videoUrl);\n    if (!response.ok) {\n      console.error(`Fetch video failed: ${response.status}`);\n      return null;\n    }\n    const contentType = response.headers.get("content-type") ?? "video/mp4";\n    const ext = contentType.includes("mp4") ? "mp4" : "mp4";\n    const filePath = `uploads/${crypto.randomUUID()}.${ext}`;\n    const { data, error } = await supabase.storage\n      .from("generated-videos")\n      .upload(filePath, response.body!, {\n        contentType,\n        cacheControl: "no-cache",\n        upsert: false,\n      });\n    if (error) {\n      console.error("Upload to storage error:", error);\n      return null;\n    }\n    const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);\n    return urlData.publicUrl;\n  } catch (err) {\n    console.error("streamVideoToStorage error:", err);\n    return null;\n  }\n}\n\nserve(async (req) => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(\n      JSON.stringify({ error: "Method Not Allowed" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  let body: Record<string, unknown>;\n  try {\n    body = await req.json();\n  } catch {\n    return new Response(\n      JSON.stringify({ error: "Invalid request body" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  // Get Jimeng API key from request body (user-provided) or env fallback\n  const userApiKey = (body.jimeng_api_key as string) ?? "";\n  const envApiKey = Deno.env.get("JIMENG_API_KEY") ?? "";\n  const apiKey = userApiKey || envApiKey;\n\n  if (!apiKey) {\n    return new Response(\n      JSON.stringify({ error: "未配置即梦 API Key，请在设置中填写" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const prompt = (body.prompt as string) ?? "";\n  if (!prompt) {\n    return new Response(\n      JSON.stringify({ error: "缺少 prompt 参数" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const size = (body.size as string) ?? "720x1280";\n  const seconds = (body.seconds as number) ?? 8;\n  const inputReferenceUrl = (body.input_reference_url as string) ?? undefined;\n  const mode = (body.mode as string) ?? "text-to-video";\n  // Jimeng model name; user can override via request body\n  const modelName = (body.model as string) ?? "jimeng-video-generate-3.0";\n\n  const { width, height } = parseSize(size);\n\n  // Build upstream request for Jimeng / Ark platform\n  // Volcengine Ark imaginations API (OpenAI-compatible)\n  const upstreamBody: Record<string, unknown> = {\n    model: modelName,\n    prompt,\n    width,\n    height,\n    duration: seconds,\n  };\n  if (inputReferenceUrl) {\n    upstreamBody.image_url = inputReferenceUrl;\n  }\n  // Optional: FPS, seed, etc.\n  const fps = (body.fps as number) ?? undefined;\n  if (fps !== undefined) upstreamBody.fps = fps;\n\n  // Primary endpoint: Ark imaginations API (OpenAI-compatible)\n  // Try with user-provided model, then fallback models\n  const models = [modelName, "jimeng-video-generate-3.0", "jimeng-video-3.0", "video-generation"];\n  const endpoints = [\n    "https://ark.cn-beijing.volces.com/api/v3/imaginations/generations",\n    "https://ark.cn-beijing.volces.com/api/v3/videos/generations",\n  ];\n\n  let lastError = "";\n  for (const endpoint of endpoints) {\n    for (const m of models) {\n      try {\n        const reqBody = { ...upstreamBody, model: m };\n        const upstream = await fetch(endpoint, {\n          method: "POST",\n          headers: {\n            "Content-Type": "application/json",\n            "Authorization": `Bearer ${apiKey}`,\n          },\n          body: JSON.stringify(reqBody),\n        });\n\n        const result = await upstream.json();\n\n        if (!upstream.ok) {\n          const msg = result.error?.message ?? result.message ?? JSON.stringify(result);\n          lastError = `${endpoint} model=${m} 错误 (${upstream.status}): ${msg}`;\n          console.error(lastError);\n          // If it\'s a model-not-found error, try next model; otherwise try next endpoint\n          const msgLower = String(msg).toLowerCase();\n          if (msgLower.includes("model") || msgLower.includes("not found") || msgLower.includes("不存在")) {\n            continue; // try next model\n          }\n          break; // try next endpoint\n        }\n\n        // Success path\n        const jobId = result.id ?? result.data?.id ?? result.job_id ?? result.task_id;\n        if (jobId) {\n          return new Response(\n            JSON.stringify({ videoId: String(jobId), status: result.status ?? "processing" }),\n            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n          );\n        }\n\n        // If response contains a direct video URL\n        const directVideoUrl = result.video_url ?? result.data?.video_url ?? result.url;\n        if (directVideoUrl) {\n          const publicUrl = await streamVideoToStorage(String(directVideoUrl));\n          return new Response(\n            JSON.stringify({\n              videoId: `direct_${crypto.randomUUID()}`,\n              status: "completed",\n              video_url: publicUrl ?? directVideoUrl,\n              publicUrl: publicUrl ?? directVideoUrl,\n            }),\n            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n          );\n        }\n\n        lastError = `未知响应格式: ${JSON.stringify(result).slice(0, 200)}`;\n      } catch (err) {\n        lastError = `请求 ${endpoint} model=${m} 失败: ${err instanceof Error ? err.message : String(err)}`;\n        console.error(lastError);\n      }\n    }\n  }\n\n  // All endpoints failed\n  return new Response(\n    JSON.stringify({ error: `即梦视频生成失败: ${lastError}` }),\n    { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n  );\n});\n'}]}
+s[1])) {\n    return { width: parts[0], height: parts[1] };\n  }\n  return { width: 720, height: 1280 };\n}\n\n/** Upload remote video URL to Supabase Storage */\nasync function streamVideoToStorage(videoUrl: string): Promise<string | null> {\n  try {\n    const response = await fetch(videoUrl);\n    if (!response.ok) {\n      console.error(`Fetch video failed: ${response.status}`);\n      return null;\n    }\n    const contentType = response.headers.get("content-type") ?? "video/mp4";\n    const ext = contentType.includes("mp4") ? "mp4" : "mp4";\n    const filePath = `uploads/${crypto.randomUUID()}.${ext}`;\n    const { data, error } = await supabase.storage\n      .from("generated-videos")\n      .upload(filePath, response.body!, {\n        contentType,\n        cacheControl: "no-cache",\n        upsert: false,\n      });\n    if (error) {\n      console.error("Upload to storage error:", error);\n      return null;\n    }\n    const { data: urlData } = supabase.storage.from("generated-videos").getPublicUrl(filePath);\n    return urlData.publicUrl;\n  } catch (err) {\n    console.error("streamVideoToStorage error:", err);\n    return null;\n  }\n}\n\nserve(async (req) => {\n  if (req.method === "OPTIONS") {\n    return new Response(null, { status: 204, headers: corsHeaders() });\n  }\n\n  if (req.method !== "POST") {\n    return new Response(\n      JSON.stringify({ error: "Method Not Allowed" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  let body: Record<string, unknown>;\n  try {\n    body = await req.json();\n  } catch {\n    return new Response(\n      JSON.stringify({ error: "Invalid request body" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  // Get Jimeng API key from request body (user-provided) or env fallback\n  const userApiKey = (body.jimeng_api_key as string) ?? "";\n  const envApiKey = Deno.env.get("JIMENG_API_KEY") ?? "";\n  const apiKey = userApiKey || envApiKey;\n\n  if (!apiKey) {\n    return new Response(\n      JSON.stringify({ error: "未配置即梦 API Key，请在设置中填写" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const prompt = (body.prompt as string) ?? "";\n  if (!prompt) {\n    return new Response(\n      JSON.stringify({ error: "缺少 prompt 参数" }),\n      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n    );\n  }\n\n  const size = (body.size as string) ?? "720x1280";\n  const seconds = (body.seconds as number) ?? 8;\n  const inputReferenceUrl = (body.input_reference_url as string) ?? undefined;\n  const mode = (body.mode as string) ?? "text-to-video";\n  // Jimeng model name; user can override via request body\n  const modelName = (body.model as string) ?? "jimeng-video-generate-3.0";\n\n  const { width, height } = parseSize(size);\n\n  // Build upstream request for Jimeng / Ark platform\n  // Volcengine Ark imaginations API (OpenAI-compatible)\n  const upstreamBody: Record<string, unknown> = {\n    model: modelName,\n    prompt,\n    width,\n    height,\n    duration: seconds,\n  };\n  if (inputReferenceUrl) {\n    upstreamBody.image_url = inputReferenceUrl;\n  }\n  // Optional: FPS, seed, etc.\n  const fps = (body.fps as number) ?? undefined;\n  if (fps !== undefined) upstreamBody.fps = fps;\n\n  // Primary endpoint: Ark imaginations API (OpenAI-compatible)\n  // Try with user-provided model, then fallback models\n  const models = [modelName, "jimeng-video-generate-3.0", "jimeng-video-3.0", "video-generation"];\n  const endpoints = [\n    "https://ark.cn-beijing.volces.com/api/v3/imaginations/generations",\n    "https://ark.cn-beijing.volces.com/api/v3/videos/generations",\n  ];\n\n  let lastError = "";\n  for (const endpoint of endpoints) {\n    for (const m of models) {\n      try {\n        const reqBody = { ...upstreamBody, model: m };\n        const upstream = await fetch(endpoint, {\n          method: "POST",\n          headers: {\n            "Content-Type": "application/json",\n            "Authorization": `Bearer ${apiKey}`,\n          },\n          body: JSON.stringify(reqBody),\n        });\n\n        const result = await upstream.json();\n\n        if (!upstream.ok) {\n          const msg = result.error?.message ?? result.message ?? JSON.stringify(result);\n          lastError = `${endpoint} model=${m} 错误 (${upstream.status}): ${msg}`;\n          console.error(lastError);\n          // If it\'s a model-not-found error, try next model; otherwise try next endpoint\n          const msgLower = String(msg).toLowerCase();\n          if (msgLower.includes("model") || msgLower.includes("not found") || msgLower.includes("不存在")) {\n            continue; // try next model\n          }\n          break; // try next endpoint\n        }\n\n        // Success path\n        const jobId = result.id ?? result.data?.id ?? result.job_id ?? result.task_id;\n        if (jobId) {\n          return new Response(\n            JSON.stringify({ videoId: String(jobId), status: result.status ?? "processing" }),\n            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n          );\n        }\n\n        // If response contains a direct video URL\n        const directVideoUrl = result.video_url ?? result.data?.video_url ?? result.url;\n        if (directVideoUrl) {\n          const publicUrl = await streamVideoToStorage(String(directVideoUrl));\n          return new Response(\n            JSON.stringify({\n              videoId: `direct_${crypto.randomUUID()}`,\n              status: "completed",\n              video_url: publicUrl ?? directVideoUrl,\n              publicUrl: publicUrl ?? directVideoUrl,\n            }),\n            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n          );\n        }\n\n        lastError = `未知响应格式: ${JSON.stringify(result).slice(0, 200)}`;\n      } catch (err) {\n        lastError = `请求 ${endpoint} model=${m} 失败: ${err instanceof Error ? err.message : String(err)}`;\n        console.error(lastError);\n      }\n    }\n  }\n\n  // All endpoints failed\n  return new Response(\n    JSON.stringify({ error: `即梦视频生成失败: ${lastError}` }),\n    { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },\n  );\n});\n'}]}
 </action>
 <observation>
 **MCPObservation**
@@ -6417,4 +5071,1746 @@ grep -n "segmentTextBySemantics\|segmentSubtitleText\|buildSubtitleTimeline\|spl
 [The command completed with exit code 0.]
 [Current working directory: /workspace]
 --END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -rn "from.*segment\|from.*text-segmentation\|segmentSubtitleText\|segmentTextBySemantics\|buildSubtitleTimeline\|splitTextToScenes\|splitTextToSubtitles\|buildSubtitleTimelineV2" /workspace/app-bmyoogysfs3l/src/ --include="*.ts" --include="*.tsx" | grep -v ".test.ts"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+/workspace/app-bmyoogysfs3l/src/lib/text-segmentation.ts:551:export function splitTextToScenes(
+/workspace/app-bmyoogysfs3l/src/lib/text-segmentation.ts:576:export function splitTextToSubtitles(
+/workspace/app-bmyoogysfs3l/src/lib/text-segmentation.ts:596:export function buildSubtitleTimelineV2(
+/workspace/app-bmyoogysfs3l/src/lib/text-segmentation.ts:601:  const lines = splitTextToSubtitles(text, options);
+/workspace/app-bmyoogysfs3l/src/lib/segment.ts:1:import { Segment, useDefault } from 'segmentit';
+/workspace/app-bmyoogysfs3l/src/lib/segment.ts:56:export function segmentTextBySemantics(text: string, maxLength = 120, minLength = 40): string[] {
+/workspace/app-bmyoogysfs3l/src/lib/segment.ts:267:export function segmentSubtitleText(text: string): string[] {
+/workspace/app-bmyoogysfs3l/src/lib/segment.ts:385:export function buildSubtitleTimeline(text: string, totalDuration: number): SubtitleTimelineItem[] {
+/workspace/app-bmyoogysfs3l/src/lib/segment.ts:386:  const lines = segmentSubtitleText(text);
+/workspace/app-bmyoogysfs3l/src/lib/history-prompt.ts:1:import { splitTextToScenes } from './text-segmentation';
+/workspace/app-bmyoogysfs3l/src/lib/history-prompt.ts:1111: * @deprecated 建议直接使用 text-segmentation 模块的 splitTextToScenes
+/workspace/app-bmyoogysfs3l/src/lib/history-prompt.ts:1114:  return splitTextToScenes(text, { targetCount });
+/workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx:16:import { buildSubtitleTimeline } from '@/lib/segment';
+/workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx:556:        const subtitles = buildSubtitleTimeline(task?.prompt || '', totalDuration).map((s) => ({
+/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx:25:import { segmentTextBySemantics, buildSubtitleTimeline } from '@/lib/segment';
+/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx:26:import { splitTextToScenes } from '@/lib/text-segmentation';
+/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx:623:        segments = segmentTextBySemantics(audioText.trim());
+/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx:762:        const imgSegments = splitTextToScenes(audioText.trim(), { targetCount: imageCount });
+/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx:923:            const subtitles = buildSubtitleTimeline(audioText, finalAudioDuration).map((s) => ({
+/workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx:5:import { segmentSubtitleText } from '@/lib/segment';
+/workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx:69:    return segmentSubtitleText(audioText);
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "IMAGE_OPTIONS\|minimax\|sensenova\|vidu\|jimeng\|kling" /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx | head -30
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+27:  jimengApiKey: string;
+47:  { value: 'jimeng', label: '即梦' },
+48:  { value: 'kling', label: '可灵' },
+49:  { value: 'vidu', label: 'Vidu' },
+53:const IMAGE_OPTIONS = [
+54:  { value: 'jimeng', label: '即梦' },
+55:  { value: 'kling', label: '可灵' },
+56:  { value: 'vidu', label: 'Vidu' },
+57:  { value: 'sensenova', label: '商汤SenseNova' },
+64:  video: { source: 'builtin', provider: 'jimeng' },
+65:  image: { source: 'builtin', provider: 'jimeng' },
+93:  jimeng:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' },
+94:  kling:    { url: 'https://api.klingai.com/v1',   model: '' },
+95:  vidu:     { url: 'https://api.vidu.cn',          model: 'viduq2' },
+96:  sensenova:{ url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' },
+105:    if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' };
+106:    if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: 'viduq2' };
+107:    if (provider === 'sensenova') return { url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' };
+108:    if (provider === 'kling') return { url: '', model: '' };
+112:    if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-video-generate-3.0' };
+113:    if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: '' };
+114:    if (provider === 'kling') return { url: '', model: '' };
+147:          {profile.provider === 'jimeng'
+217:  const isJimeng = provider === 'jimeng';
+219:  const fixedUrlProviders = ['vidu', 'kling', 'jimeng', 'sensenova'];
+222:  const showModelName = type !== 'image' || (provider !== 'vidu' && provider !== 'jimeng');
+334:  const [jimengApiKey, setJimengApiKey] = useState('');
+376:            jimengApiKey: data.jimeng_api_key ?? '',
+387:    setJimengApiKey(storedCfg.jimengApiKey ?? '');
+393:      video: { ...DEFAULT_MODEL_CONFIG.video, ...(storedCfg.modelConfig?.video || {}), source: (storedCfg.modelConfig?.video?.source as 'builtin' | 'custom') ?? 'builtin', provider: storedCfg.modelConfig?.video?.provider ?? 'jimeng' },
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "startImageGenerationWithProfile\|queryImageGenerationWithProfile\|provider.*image\|image.*provider" /workspace/app-bmyoogysfs3l/src/services/video.ts | head -40
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+77:function readModelConfig(): { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } {
+81:    return (JSON.parse(stored) as { modelConfig?: { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } }).modelConfig || {};
+95:  return p?.provider || mcfg.image?.provider || 'kling';
+630:export async function startImageGenerationWithProfile(
+710:export async function queryImageGenerationWithProfile(
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+FileReadAction(path='/workspace/app-bmyoogysfs3l/src/services/video.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[630, 790], user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-bmyoogysfs3l/src/services/video.ts is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/services/video.ts:
+   630 export async function startImageGenerationWithProfile(
+   631   params: { prompt: string; size?: string; referenceImageUrl?: string },
+   632   profile: { provider: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> },
+   633 ): Promise<{ imageId: string; status: string }> {
+   634   const { provider, apiKey, apiBaseUrl, extra } = profile;
+   635 
+   636   // Jimeng 自定义API（即梦4.0使用火山引擎AK/SK签名认证）
+   637   if (provider === 'jimeng') {
+   638     const ak = extra?.accessKeyId?.trim();
+   639     const sk = extra?.secretAccessKey?.trim();
+   640     if (!ak || !sk) {
+   641       throw new Error('即梦 API 需要配置 Access Key ID 和 Secret Access Key');
+   642     }
+   643     const data = await invokeFunction('jimeng-generate-image', {
+   644       prompt: params.prompt,
+   645       size: params.size ?? '1024x1024',
+   646       access_key_id: ak,
+   647       secret_access_key: sk,
+   648     }) as { imageId?: string; status?: string; error?: string };
+   649     if (data.error) throw new Error(data.error);
+   650     if (!data.imageId) throw new Error('即梦未返回图片任务ID');
+   651     return { imageId: data.imageId, status: data.status ?? 'pending' };
+   652   }
+   653 
+   654   // Vidu 自定义API
+   655   if (provider === 'vidu' && apiKey) {
+   656     const data = await invokeFunction('vidu-generate-image', {
+   657       prompt: params.prompt,
+   658       size: params.size ?? '720x1280',
+   659       reference_image_url: params.referenceImageUrl,
+   660       vidu_api_key: apiKey.trim(),
+   661     }) as { imageId?: string; status?: string; error?: string };
+   662     if (data.error) throw new Error(data.error);
+   663     if (!data.imageId) throw new Error('未返回图片任务ID');
+   664     return { imageId: data.imageId, status: data.status ?? 'pending' };
+   665   }
+   666 
+   667   // SenseNova 自定义API（通过Edge Function调用，避免前端CORS问题）
+   668   if (provider === 'sensenova' && apiKey) {
+   669     const data = await invokeFunction('sensenova-generate-image', {
+   670       prompt: params.prompt,
+   671       size: params.size ?? '1280x720',
+   672       sensenova_api_key: apiKey.trim(),
+   673       model: 'sensenova-u1-fast',
+   674       n: 1,
+   675     }) as { imageId?: string; status?: string; rawUrl?: string; error?: string };
+   676     if (data.error) throw new Error(data.error);
+   677     if (!data.imageId) throw new Error('SenseNova 未返回图片 URL');
+   678     const publicUrl = await uploadRemoteImageToStorage(data.imageId);
+   679     return { imageId: publicUrl, status: 'completed' };
+   680   }
+   681 
+   682   // 默认走可灵内置AI（包括 other / kling 等）
+   683   const aspectRatio = sizeToKlingAspectRatio(params.size ?? '720x1280');
+   684   const reqBody: Record<string, unknown> = {
+   685     prompt: params.prompt,
+   686     model_name: 'kling-image-o1',
+   687     resolution: '1k',
+   688     result_type: 'single',
+   689     n: 1,
+   690     aspect_ratio: aspectRatio,
+   691   };
+   692   if (params.referenceImageUrl) {
+   693     reqBody.image_list = [{ image: params.referenceImageUrl }];
+   694   }
+   695 
+   696   const data = await invokeFunction('kling-omni-image-submit', reqBody) as {
+   697     code?: number;
+   698     message?: string;
+   699     data?: { task_id?: string; task_status?: string };
+   700   };
+   701   if (data.code !== 0) throw new Error(data.message || '可灵图片生成提交失败');
+   702   const taskId = data.data?.task_id;
+   703   if (!taskId) throw new Error('未返回图片任务ID');
+   704   return { imageId: taskId, status: data.data?.task_status ?? 'submitted' };
+   705 }
+   706 
+   707 /**
+   708  * 使用指定 profile 查询图片生成状态
+   709  */
+   710 export async function queryImageGenerationWithProfile(
+   711   imageId: string,
+   712   profile: { provider: string; apiKey?: string; apiBaseUrl?: string; extra?: Record<string, string> },
+   713 ): Promise<{
+   714   status: string;
+   715   progress: number;
+   716   image_url?: string;
+   717   publicUrl?: string;
+   718   error?: string | null;
+   719 }> {
+   720   const { provider, apiKey, extra } = profile;
+   721 
+   722   // Jimeng 自定义API（即梦4.0使用火山引擎AK/SK签名认证）
+   723   if (provider === 'jimeng') {
+   724     const ak = extra?.accessKeyId?.trim();
+   725     const sk = extra?.secretAccessKey?.trim();
+   726     if (!ak || !sk) {
+   727       return { status: 'failed', progress: 0, error: '缺少即梦 Access Key ID 或 Secret Access Key' };
+   728     }
+   729     return await invokeFunction('jimeng-query-image', {
+   730       task_id: imageId,
+   731       access_key_id: ak,
+   732       secret_access_key: sk,
+   733     }) as {
+   734       status: string;
+   735       progress: number;
+   736       image_url?: string;
+   737       publicUrl?: string;
+   738       error?: string | null;
+   739     };
+   740   }
+   741 
+   742   // Vidu 自定义API
+   743   if (provider === 'vidu' && apiKey) {
+   744     return await invokeFunction('vidu-query-image', {
+   745       image_id: imageId,
+   746       vidu_api_key: apiKey.trim(),
+   747     }) as {
+   748       status: string;
+   749       progress: number;
+   750       image_url?: string;
+   751       publicUrl?: string;
+   752       error?: string | null;
+   753     };
+   754   }
+   755 
+   756   // SenseNova 图片已在生成时下载到Storage，imageId 即为 Storage publicUrl
+   757   if (provider === 'sensenova' && apiKey) {
+   758     return {
+   759       status: 'completed',
+   760       progress: 100,
+   761       image_url: imageId,
+   762       publicUrl: imageId,
+   763       error: null,
+   764     };
+   765   }
+   766 
+   767   // 可灵内置AI
+   768   const data = await invokeFunction('kling-omni-image-query', {
+   769     task_id: imageId,
+   770   }) as {
+   771     code?: number;
+   772     message?: string;
+   773     data?: {
+   774       task_status?: string;
+   775       task_status_msg?: string;
+   776       task_result?: {
+   777         result_type?: string;
+   778         images?: Array<{ index: number; url: string }>;
+   779         series_images?: Array<{ index: number; url: string }>;
+   780       };
+   781     };
+   782   };
+   783 
+   784   if (data.code !== 0) {
+   785     return { status: 'failed', progress: 0, error: data.message || '查询失败' };
+   786   }
+   787 
+   788   const taskData = data.data;
+   789   const taskStatus = taskData?.task_status ?? 'submitted';
+   790 
+
+
+</observation>
+<action>
+FileReadAction(path='/workspace/app-bmyoogysfs3l/src/services/video.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[790, 840], user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-bmyoogysfs3l/src/services/video.ts is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/services/video.ts:
+   790 
+   791   if (taskStatus === 'succeed') {
+   792     const taskResult = taskData?.task_result;
+   793     const items = taskResult?.result_type === 'series'
+   794       ? taskResult.series_images
+   795       : taskResult?.images;
+   796     const firstImage = items && items.length > 0 ? items[0] : undefined;
+   797     return {
+   798       status: 'completed',
+   799       progress: 100,
+   800       image_url: firstImage?.url,
+   801       publicUrl: firstImage?.url,
+   802       error: null,
+   803     };
+   804   }
+   805 
+   806   if (taskStatus === 'failed') {
+   807     return {
+   808       status: 'failed',
+   809       progress: 0,
+   810       error: taskData?.task_status_msg || '图片生成失败',
+   811     };
+   812   }
+   813 
+   814   return { status: 'in_progress', progress: 50, error: null };
+   815 }
+   816 
+   817 // ---------- Gallery Images ----------
+   818 
+   819 export async function createGalleryImage(params: {
+   820   taskId: string;
+   821   imageUrl?: string;
+   822   prompt: string;
+   823   originalPrompt?: string;
+   824   index: number;
+   825   status?: 'pending' | 'success' | 'failed';
+   826   errorMessage?: string;
+   827 }): Promise<GalleryImage> {
+   828   const { data: { user } } = await supabase.auth.getUser();
+   829   const { data, error } = await supabase
+   830     .from('gallery_images')
+   831     .insert({
+   832       task_id: params.taskId,
+   833       user_id: user?.id,
+   834       image_url: params.imageUrl || null,
+   835       prompt: params.prompt,
+   836       original_prompt: params.originalPrompt || null,
+   837       index: params.index,
+   838       status: params.status || 'success',
+   839       error_message: params.errorMessage || null,
+   840     })
+
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+ls /workspace/app-bmyoogysfs3l/supabase/functions/
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+api-health-check
+clone-voice
+jimeng-create-video
+jimeng-generate-image
+jimeng-query-image
+jimeng-query-video
+jimeng-test-connection
+kling-create-video
+kling-omni-image-query
+kling-omni-image-submit
+kling-query-video
+optimize-prompt
+sensenova-generate-image
+sensenova-query-image
+sora-create-video
+sora-query-video
+sora-remix-video
+sora-video-from-reference
+tts-minimax
+vidu-create-video
+vidu-generate-image
+vidu-query-image
+vidu-query-video
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+FileReadAction(path='/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[1, 40], user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx:
+     1 import React, { useState, useRef, useCallback, useEffect } from 'react';
+     2 import { useNavigate } from 'react-router-dom';
+     3 import { Type, Image, Wand2, Mic, Upload, Play, Pause, ArrowRight, Trash2, Volume2, SlidersHorizontal, User, Download, Save, RotateCcw, FileCheck, Film, Layers } from 'lucide-react';
+     4 import { Button } from '@/components/ui/button';
+     5 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+     6 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+     7 import { Progress } from '@/components/ui/progress';
+     8 import { Textarea } from '@/components/ui/textarea';
+     9 import { Label } from '@/components/ui/label';
+    10 import { Input } from '@/components/ui/input';
+    11 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    12 import { Slider } from '@/components/ui/slider';
+    13 import { Checkbox } from '@/components/ui/checkbox';
+    14 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+    15 import { toast } from 'sonner';
+    16 import { createVideoTask, generateTTS, startTextToVideo, startImageToVideo, startRemixVideo, getUserVoices, useJimengForVideo, batchParallel, startImageGeneration, queryImageGeneration, createGalleryImage, useViduForVideo, isImageGenerationAvailable } from '@/services/video';
+    17 import { createSlideshowVideo, mapSubtitleStyle, getVideoExtension } from '@/lib/slideshow';
+    18 import type { SubtitleSegment } from '@/lib/slideshow';
+    19 import { getDoubaoVoiceId, getDoubaoVoiceName } from '@/components/ApiSettingsDialog';
+    20 import { supabase } from '@/db/supabase';
+    21 import { useAuth } from '@/contexts/AuthContext';
+    22 import VoiceCloneDialog from '@/components/VoiceCloneDialog';
+    23 import BgmSettings from '@/components/BgmSettings';
+    24 import SubtitleSettings from '@/components/SubtitleSettings';
+    25 import { segmentTextBySemantics, buildSubtitleTimeline } from '@/lib/segment';
+    26 import { splitTextToScenes } from '@/lib/text-segmentation';
+    27 import { generateImagePrompts } from '@/lib/history-prompt';
+    28 import { mixAudio, uploadMixedAudio } from '@/lib/audio-mixer';
+    29 import type { CreateMode, UserVoice } from '@/types';
+    30 import type { BgmConfig } from '@/components/BgmSettings';
+    31 import type { SubtitleConfig } from '@/components/SubtitleSettings';
+    32 
+    33 const MODES: { key: CreateMode; label: string; icon: React.ElementType; desc: string }[] = [
+    34   { key: 'gallery', label: '图片轮播视频', icon: Image, desc: '生成口播语音和多张图片，组合为轮播视频' },
+    35   { key: 'text', label: '文生视频', icon: Type, desc: '输入文本描述，AI 自动生成视频' },
+    36   { key: 'image', label: '图生视频', icon: Image, desc: '上传参考图片，基于图片生成视频' },
+    37   { key: 'remix', label: '视频Remix', icon: Wand2, desc: '上传已有视频，进行局部编辑' },
+    38 ];
+    39 
+    40 const IMAGE_EFFECTS = [
+
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+sed -n '615,640p' /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+            toast.warning(`背景音乐混音失败: ${msg}，将使用原音频`);
+          }
+        }
+      }
+
+      // Step 3: Segment text by semantics ONLY when "audio duration" mode is selected
+      let segments: string[] = [];
+      if (isAudioDurationMode && audioText.trim()) {
+        segments = segmentTextBySemantics(audioText.trim());
+      }
+      const totalSegments = segments.length > 0 ? segments.length : 1;
+      const totalSeconds = isAudioDurationMode
+        ? (finalAudioDuration > 0 ? Math.ceil(finalAudioDuration) : 8)
+        : Number(seconds);
+      const segmentDuration = totalSegments > 1
+        ? Math.ceil(totalSeconds / totalSegments)
+        : totalSeconds;
+
+      const effectivePrompt = prompt.trim() || audioText.trim() || 'AI 生成视频';
+      const bgmPayload = {
+        bgm_enabled: bgmConfig.enabled,
+        bgm_url: bgmConfig.url || null,
+        bgm_volume: bgmConfig.volume,
+      };
+      const subtitlePayload = {
+        subtitle_enabled: subtitleConfig.enabled,
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+sed -n '755,775p' /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+          tts_audio_url: mixedAudioUrl || null,
+          tts_duration_seconds: finalAudioDuration > 0 ? Math.ceil(finalAudioDuration) : null,
+        }).eq('id', task.id);
+
+        // Step 3: Text segmentation with independent text-segmentation module
+        const segIndex = bgmStepIndex >= 0 ? 3 : 2;
+        updateStep(segIndex, 'active');
+        const imgSegments = splitTextToScenes(audioText.trim(), { targetCount: imageCount });
+        const actualCount = imgSegments.length;
+        updateStep(segIndex, 'completed', `语义分断为 ${actualCount} 段 (text-seg v1.0)`);
+
+        // Step 4: Generate image prompts with v9.0 strategy (client-side, no LLM)
+        const optIndex = segIndex + 1;
+        updateStep(optIndex, 'active');
+        const optimizedPrompts = generateImagePrompts(imgSegments, audioText.trim());
+        updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
+        toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 杢`);
+
+        // Step 5: Generate images with optimized prompts
+        const imgIndex = optIndex + 1;
+        updateStep(imgIndex, 'active', `0/${actualCount}`);
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+sed -n '915,935p' /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+
+          // 6b: Merged version (voice + BGM + subtitles) if configured
+          let mergedVideoUrl: string | null = null;
+          if (generateMerged && (bgmConfig.enabled || subtitleConfig.enabled)) {
+            updateStep(vidIndex, 'active', `正在合成整合版视频（语音+背景音乐+字幕）${estSeconds} 秒`);
+
+            // Build subtitle timeline synchronized with voice duration
+            // Each subtitle line is 1-12 chars, timed proportionally by char count
+            const subtitles = buildSubtitleTimeline(audioText, finalAudioDuration).map((s) => ({
+              text: s.text,
+              startTime: s.startTime,
+              endTime: s.endTime,
+            }));
+
+            const mergedBlob = await createSlideshowVideo(
+              validImages,
+              mixedAudioUrl || null,
+              imageEffect,
+              transitionEffect,
+              30,
+              (progress) => {
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "buildSubtitleTimeline\|segmentTextBySemantics\|segmentSubtitleText" /workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+16:import { buildSubtitleTimeline } from '@/lib/segment';
+556:        const subtitles = buildSubtitleTimeline(task?.prompt || '', totalDuration).map((s) => ({
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "buildSubtitleTimeline\|segmentSubtitleText" /workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+5:import { segmentSubtitleText } from '@/lib/segment';
+69:    return segmentSubtitleText(audioText);
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+AgentThinkAction(thought='\nLet me understand what the user is asking:\n\n1. **Text segmentation logic**: The user wants to use the Python implementation in `text_segmentation_module.py` to replace/implement the current segmentation logic. Looking at the code:\n   - `text_segmentation_module.py` (Python) - already ported to `text-segmentation.ts` (TypeScript)\n   - `segment.ts` - uses `segmentit` for jieba-like tokenization, implements the subtitle splitting with token-based approach (the "NO SUBSTRING" rule from the requirements)\n   - The current code already has both modules working\n\n   Currently:\n   - `history-prompt.ts` uses `splitTextToScenes` from `text-segmentation.ts`\n   - `CreatePage.tsx` uses both `segmentTextBySemantics` from `segment.ts` AND `splitTextToScenes` from `text-segmentation.ts`\n   - `GalleryPage.tsx` uses `buildSubtitleTimeline` from `segment.ts`\n   - `SubtitleSettings.tsx` uses `segmentSubtitleText` from `segment.ts`\n\n   The user wants to unify - use the `text-segmentation.ts` module (which is the TypeScript port of the Python module) for the scene/segment logic, and use `segment.ts` (which has the jieba-based segmentation with the requirements doc constraints) for subtitle splitting.\n\n   Looking at the current usage in `CreatePage.tsx`:\n   - Line 623: `segments = segmentTextBySemantics(audioText.trim())` - for scene segmentation\n   - Line 762: `const imgSegments = splitTextToScenes(audioText.trim(), { targetCount: imageCount })` - for image scenes\n   - Line 923: `const subtitles = buildSubtitleTimeline(audioText, finalAudioDuration)` - for subtitle timeline\n\n   The `text-segmentation.ts` module already exists and has `splitTextToScenes` used in `CreatePage.tsx`. The scene segmentation part (`segmentTextBySemantics`) in `segment.ts` could be replaced by `splitTextToScenes` from `text-segmentation.ts`. But the subtitle part (`segmentSubtitleText`, `buildSubtitleTimeline`) in `segment.ts` uses jieba-based tokenization which is more sophisticated.\n\n   Actually reading more carefully - the user says "用以下写好的代码实现文字的场景和字幕分句的逻辑和功能". The `text_segmentation_module.py` has been already ported to `text-segmentation.ts`. The subtitle text segmentation in `segment.ts` uses the requirements doc approach (jieba-based, semantic splitting, no punctuation). \n\n   So the main task seems to be:\n   - Replace `segmentTextBySemantics` usage in `CreatePage.tsx` with `splitTextToScenes` from `text-segmentation.ts`\n   - Replace `buildSubtitleTimeline` usage with `buildSubtitleTimelineV2` from `text-segmentation.ts` OR keep using `segment.ts`\'s `buildSubtitleTimeline` since it\'s more sophisticated\n   \n   Wait, let me re-read. The user says "把文字的场景和字幕分句的逻辑和功能，用以下写好的代码实现". The "以下写好的代码" refers to the Python code (`text_segmentation_module.py`), and the TypeScript port is `text-segmentation.ts`. So the user wants to:\n   1. Use `text-segmentation.ts` for scene segmentation\n   2. Use `text-segmentation.ts` subtitle segmentation for subtitle splits\n\n   But looking at `text-segmentation.ts`\'s `SubtitleSegmenter` - it doesn\'t use jieba, it just splits by punctuation and character count. Whereas `segment.ts`\'s `segmentSubtitleText` uses jieba for semantic tokenization. The requirements doc clearly specifies jieba-based splitting.\n\n   I think the intent is:\n   - For **scene segmentation** (splitting text into video scenes): use `splitTextToScenes` from `text-segmentation.ts` consistently \n   - For **subtitle segmentation** (splitting text for subtitles): use `segmentSubtitleText` and `buildSubtitleTimeline` from `segment.ts` (which implements the jieba approach)\n\n   The current `CreatePage.tsx` already uses `splitTextToScenes` for image scenes but still uses `segmentTextBySemantics` for some audio scenes. The unification would be:\n   - Replace `segmentTextBySemantics` in `CreatePage.tsx` with `splitTextToScenes`\n   - Keep subtitle splitting in `segment.ts`\n\n   But wait - actually looking at the existing code more carefully, `segmentTextBySemantics` and `splitTextToScenes` have different behavior. `segmentTextBySemantics` returns segments based on semantic boundaries while `splitTextToScenes` uses the TextSegmentationModule. The Python module approach (scene segmentation by target words/duration) seems more principled.\n\n   For the subtitle part, the Python module has a `SubtitleSegmenter` that is basically the simple punctuation+max-length approach. But `segment.ts` implements the jieba-based approach which is more sophisticated. The TypeScript text-segmentation module\'s `splitTextToSubtitles` doesn\'t use jieba.\n\n   So the proper integration should be:\n   1. **Scene segmentation**: use `text-segmentation.ts`\'s `splitTextToScenes` or `TextSegmentationModule` everywhere (replace `segmentTextBySemantics`)\n   2. **Subtitle segmentation**: keep using `segment.ts`\'s `segmentSubtitleText` + `buildSubtitleTimeline` (or `buildSubtitleTimelineV2` which wraps `splitTextToSubtitles` using the Python module approach)\n\n   Actually, looking at `buildSubtitleTimelineV2` in `text-segmentation.ts` - it calls `splitTextToSubtitles` which calls `SubtitleSegmenter.segment()`. This is the Python module approach without jieba. While `buildSubtitleTimeline` in `segment.ts` calls `segmentSubtitleText` which uses jieba.\n\n   The question is: should we use the Python module\'s approach or the jieba-based approach for subtitles? The requirements doc (需求文档) says to use jieba. But the Python module (`text_segmentation_module.py`) doesn\'t use jieba for subtitles.\n\n   I think the user\'s intent is: use `text-segmentation.ts` (which is the TS port of the Python module) for BOTH scene segmentation AND subtitle segmentation, making it consistent. This means:\n   - In CreatePage: use `splitTextToScenes` for scenes (already done for images, need to fix audio)\n   - In CreatePage: use `buildSubtitleTimelineV2` for subtitle timeline (replacing `buildSubtitleTimeline`)\n   - In GalleryPage: use `buildSubtitleTimelineV2` instead of `buildSubtitleTimeline`\n   - In SubtitleSettings: use `splitTextToSubtitles` instead of `segmentSubtitleText`\n\n   But that changes behavior. Let me think again...\n\n   The user says "把文字的场景和字幕分句的逻辑和功能，用以下写好的代码实现（如果不能直接用，你可以分析和理解后，进行转换实现）". This means: implement the scene+subtitle logic using the Python code\'s approach. The TypeScript port (`text-segmentation.ts`) already exists. The task is to make the app use `text-segmentation.ts` instead of `segment.ts` for these functions.\n\n   So the migration plan:\n   1. In `CreatePage.tsx` line 623: replace `segmentTextBySemantics(audioText.trim())` with `splitTextToScenes(audioText.trim())`\n   2. In `CreatePage.tsx` line 923: replace `buildSubtitleTimeline(audioText, finalAudioDuration)` with `buildSubtitleTimelineV2(audioText, finalAudioDuration)` (both return same shape `{text, startTime, endTime, charTimings}`)\n   3. In `GalleryPage.tsx`: replace `buildSubtitleTimeline` with `buildSubtitleTimelineV2`\n   4. In `SubtitleSettings.tsx`: replace `segmentSubtitleText` with `splitTextToSubtitles`\n\n   But we need to check if the return types are compatible.\n   - `buildSubtitleTimeline` returns `SubtitleTimelineItem[]` = `{text, startTime, endTime, charTimings: number[]}`\n   - `buildSubtitleTimelineV2` returns `Array<{text, startTime, endTime, charTimings: number[]}>` - same shape!\n\n   For `segmentSubtitleText` returns `string[]`, `splitTextToSubtitles` returns `string[]` - same shape.\n   For `segmentTextBySemantics` returns `string[]`, `splitTextToScenes` returns `string[]` - same shape.\n\n   This migration is straightforward! The types are compatible.\n\n2. **MiniMax image model support**: Add MiniMax as a provider option in the image generation settings, with proper API endpoint and implementation.\n\nLet me now look at the MiniMax image generation API and the current image generation code to understand what needs to be added.\n', action=<ActionType.THINK: 'think'>)
+</action>
+<observation>
+AgentThinkObservation(content='Your thought has been logged.', observation=<ObservationType.THINK: 'think'>)
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx]
+Thought: Now I'll do all the migrations at once:
+Command: str_replace
+Old String: ```
+import { segmentTextBySemantics, buildSubtitleTimeline } from '@/lib/segment';
+import { splitTextToScenes } from '@/lib/text-segmentation';
+```
+New String: ```
+import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx has been edited.
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "segmentTextBySemantics\|buildSubtitleTimeline" /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+25:import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
+622:        segments = segmentTextBySemantics(audioText.trim());
+922:            const subtitles = buildSubtitleTimeline(audioText, finalAudioDuration).map((s) => ({
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+        segments = segmentTextBySemantics(audioText.trim());
+```
+New String: ```
+        segments = splitTextToScenes(audioText.trim());
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+            const subtitles = buildSubtitleTimeline(audioText, finalAudioDuration).map((s) => ({
+```
+New String: ```
+            const subtitles = buildSubtitleTimelineV2(audioText, finalAudioDuration).map((s) => ({
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx has been edited.
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "buildSubtitleTimeline\|segmentSubtitleText\|segmentTextBySemantics" /workspace/app-bmyoogysfs3l/src/pages/CreatePage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+25:import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
+922:            const subtitles = buildSubtitleTimelineV2(audioText, finalAudioDuration).map((s) => ({
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx]
+Thought: Good, CreatePage is done. Now fix GalleryPage and SubtitleSettings:
+Command: str_replace
+Old String: ```
+import { buildSubtitleTimeline } from '@/lib/segment';
+```
+New String: ```
+import { buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+import { segmentSubtitleText } from '@/lib/segment';
+```
+New String: ```
+import { splitTextToSubtitles } from '@/lib/text-segmentation';
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx has been edited.
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "buildSubtitleTimeline\b" /workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+556:        const subtitles = buildSubtitleTimeline(task?.prompt || '', totalDuration).map((s) => ({
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "segmentSubtitleText" /workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+69:    return segmentSubtitleText(audioText);
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+        const subtitles = buildSubtitleTimeline(task?.prompt || '', totalDuration).map((s) => ({
+```
+New String: ```
+        const subtitles = buildSubtitleTimelineV2(task?.prompt || '', totalDuration).map((s) => ({
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/pages/GalleryPage.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+    return segmentSubtitleText(audioText);
+```
+New String: ```
+    return splitTextToSubtitles(audioText);
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/components/SubtitleSettings.tsx has been edited.
+
+</observation>
+<action>
+SkillAction(skill='web-reader', args='', thought='Now work on MiniMax image support. First read the MiniMax API docs via the web reader skill:', action=<ActionType.SKILL: 'skill'>, security_risk=None)
+</action>
+<observation>
+SkillObservation(content='Base directory for this skill: /workspace/app-bmyoogysfs3l/.skills/web-reader\n\n## 能力概述\n\n基于 AWS Lambda 部署的 Jina AI Reader 代理服务，通过 JWT 鉴权抓取并解析目标网页内容，自动清除广告、导航、脚本等噪声，返回结构化的 Markdown 格式文本。\n\n| 项目 | 说明 |\n|------|------|\n| Endpoint | `GET https://app-bmyoogysfs3l-api-ELbWqODdAgNY-gateway.appmiaoda.com/{url}` |\n| 响应格式 | `text/plain`（默认 Markdown） |\n| 鉴权方式 | platform_managed（`INTEGRATIONS_API_KEY`） |\n\n**路径参数：**\n\n| 参数名 | 类型 | 必填 | 说明 |\n|--------|------|------|------|\n| `url` | string | 是 | 目标网页的完整 URL，直接拼接在 Base URL 后 |\n\n**可选请求头（控制输出行为）：**\n\n| 请求头 | 类型 | 说明 |\n|--------|------|------|\n| `X-Return-Format` | string | 返回格式：`markdown`（默认）/ `html` / `text` / `screenshot` / `pageshot` |\n| `X-With-Images-Summary` | boolean | 是否附加图片描述摘要 |\n| `X-With-Links-Summary` | boolean | 是否附加链接汇总 |\n| `X-Target-Selector` | string | CSS 选择器，仅提取特定元素内容 |\n| `X-Remove-Selector` | string | CSS 选择器，移除特定元素 |\n| `X-Timeout` | number | 页面加载超时时间（秒） |\n| `X-No-Cache` | boolean | 设为 `true` 禁用缓存，强制重新抓取 |\n| `Accept` | string | 设为 `text/event-stream` 开启流式响应（SSE） |\n\n**响应示例：**\n\n```\nTitle: Example Domain\n\nURL Source: http://example.com\n\nMarkdown Content:\n# Example Domain\n\nThis domain is for use in illustrative examples in documents...\n```\n\n**响应头：**\n\n| 响应头 | 说明 |\n|--------|------|\n| `Content-Type` | `text/plain; charset=utf-8` |\n| `x-usage-tokens` | 本次请求消耗的 Token 数量 |\n| `cf-cache-status` | Cloudflare 缓存状态 |\n| `x-amzn-RequestId` | AWS Lambda 请求 ID |\n\n**错误码：**\n\n| HTTP 状态码 | 说明 |\n|-------------|------|\n| 200 | 成功，响应体为解析后的 Markdown 文本 |\n| 401 | JWT Token 缺失或无效 |\n| 403 | Token 有效但目标 URL 被 GFW 过滤 |\n\n---\n\n## 生成期用法（Agent 直接调用）\n\n```typescript\nconst apiKey = process.env["INTEGRATIONS_API_KEY"]!; // platform_managed 密钥由平台注入\n\n/**\n * 抓取目标网页并返回 Markdown 格式的正文内容。\n * @param targetUrl - 目标网页的完整 URL\n * @param options - 可选的输出控制参数\n * @param options.returnFormat - 返回格式，默认 markdown\n * @param options.withImagesSummary - 是否附加图片摘要\n * @param options.withLinksSummary - 是否附加链接汇总\n * @param options.targetSelector - CSS 选择器，仅提取特定元素\n * @param options.removeSelector - CSS 选择器，移除特定元素\n * @param options.timeout - 页面加载超时时间（秒）\n * @param options.noCache - 是否禁用缓存\n * @param options.accept - Accept 请求头，设为 `text/event-stream` 可开启 SSE 流式模式，默认 `text/html`\n * @returns 网页的 Markdown 文本内容（非流式）或 SSE 流（流式）\n */\nasync function fetchWebPage(\n  targetUrl: string,\n  options?: {\n    returnFormat?: "markdown" | "html" | "text" | "screenshot" | "pageshot";\n    withImagesSummary?: boolean;\n    withLinksSummary?: boolean;\n    targetSelector?: string;\n    removeSelector?: string;\n    timeout?: number;\n    noCache?: boolean;\n    accept?: "text/html" | "text/event-stream";\n  }\n): Promise<string> {\n  const encodedUrl = encodeURIComponent(targetUrl);\n  const endpoint =\n    `https://app-bmyoogysfs3l-api-ELbWqODdAgNY-gateway.appmiaoda.com/${encodedUrl}`;\n\n  const headers: Record<string, string> = {\n    "X-Gateway-Authorization": `Bearer ${apiKey}`,\n  };\n\n  if (options?.returnFormat) headers["X-Return-Format"] = options.returnFormat;\n  if (options?.withImagesSummary !== undefined) {\n    headers["X-With-Images-Summary"] = String(options.withImagesSummary);\n  }\n  if (options?.withLinksSummary !== undefined) {\n    headers["X-With-Links-Summary"] = String(options.withLinksSummary);\n  }\n  if (options?.targetSelector) headers["X-Target-Selector"] = options.targetSelector;\n  if (options?.removeSelector) headers["X-Remove-Selector"] = options.removeSelector;\n  if (options?.timeout !== undefined) headers["X-Timeout"] = String(options.timeout);\n  if (options?.noCache) headers["X-No-Cache"] = "true";\n  if (options?.accept) headers["Accept"] = options.accept;\n\n  const response = await fetch(endpoint, { method: "GET", headers });\n\n  if (response.status === 401) throw new Error("鉴权失败：JWT Token 缺失或无效");\n  if (response.status === 403) throw new Error("目标 URL 被 GFW 过滤，无法访问");\n  if (!response.ok) throw new Error(`HTTP 错误：${response.status}`);\n\n  return await response.text();\n}\n\n// 使用示例\nconst markdown = await fetchWebPage("https://example.com", {\n  withLinksSummary: true,\n});\nconsole.log(markdown);\n```\n\n---\n\n## 生成后用法（应用内通过 Edge Function 调用）\n\n### Edge Function 代码\n\n```typescript\n// edge-functions/web-reader.ts\nimport { serve } from "https://deno.land/std/http/server.ts";\n\nserve(async (req: Request): Promise<Response> => {\n  /**\n   * Web Reader Edge Function\n   * 接收前端请求，注入平台密钥后转发至上游 Jina Reader 服务。\n   * 请求体：{ url: string, options?: {...} }\n   * 响应：{ content: string }\n   */\n  if (req.method !== "POST") {\n    return new Response("Method Not Allowed", { status: 405 });\n  }\n\n  // --- 解析客户端请求 ---\n  let targetUrl: string;\n  let returnFormat: string | undefined;\n  let withImagesSummary: boolean | undefined;\n  let withLinksSummary: boolean | undefined;\n  let targetSelector: string | undefined;\n  let removeSelector: string | undefined;\n  let timeout: number | undefined;\n  let noCache: boolean | undefined;\n\n  try {\n    const body = await req.json();\n    targetUrl = body.url;\n    if (!targetUrl) throw new Error("Missing url");\n    returnFormat = body.returnFormat;\n    withImagesSummary = body.withImagesSummary;\n    withLinksSummary = body.withLinksSummary;\n    targetSelector = body.targetSelector;\n    removeSelector = body.removeSelector;\n    timeout = body.timeout;\n    noCache = body.noCache;\n  } catch {\n    return new Response(JSON.stringify({ error: "Invalid request body" }), {\n      status: 400,\n      headers: { "Content-Type": "application/json" },\n    });\n  }\n\n  // --- 注入平台密钥（严禁暴露至前端） ---\n  const apiKey = Deno.env.get("INTEGRATIONS_API_KEY");\n  if (!apiKey) {\n    return new Response(JSON.stringify({ error: "Server configuration error" }), {\n      status: 500,\n      headers: { "Content-Type": "application/json" },\n    });\n  }\n\n  // --- 构造请求头 ---\n  const upstreamHeaders: Record<string, string> = {\n    "X-Gateway-Authorization": `Bearer ${apiKey}`,\n  };\n  if (returnFormat) upstreamHeaders["X-Return-Format"] = returnFormat;\n  if (withImagesSummary !== undefined) {\n    upstreamHeaders["X-With-Images-Summary"] = String(withImagesSummary);\n  }\n  if (withLinksSummary !== undefined) {\n    upstreamHeaders["X-With-Links-Summary"] = String(withLinksSummary);\n  }\n  if (targetSelector) upstreamHeaders["X-Target-Selector"] = targetSelector;\n  if (removeSelector) upstreamHeaders["X-Remove-Selector"] = removeSelector;\n  if (timeout !== undefined) upstreamHeaders["X-Timeout"] = String(timeout);\n  if (noCache) upstreamHeaders["X-No-Cache"] = "true";\n\n  // --- 调用上游服务 ---\n  const encodedUrl = encodeURIComponent(targetUrl);\n  const upstream = await fetch(\n    `https://app-bmyoogysfs3l-api-ELbWqODdAgNY-gateway.appmiaoda.com/${encodedUrl}`,\n    { method: "GET", headers: upstreamHeaders }\n  );\n\n  // 转发鉴权/过滤错误\n  if (upstream.status === 401 || upstream.status === 403) {\n    const errText = await upstream.text();\n    return new Response(JSON.stringify({ error: errText || `Upstream error: ${upstream.status}` }), {\n      status: upstream.status,\n      headers: { "Content-Type": "application/json" },\n    });\n  }\n\n  // 转发配额/余额错误\n  if (upstream.status === 429 || upstream.status === 402) {\n    const errText = await upstream.text();\n    return new Response(errText, {\n      status: upstream.status,\n      headers: { "Content-Type": "application/json" },\n    });\n  }\n\n  if (!upstream.ok) {\n    return new Response(\n      JSON.stringify({ error: `Upstream error: ${upstream.status}` }),\n      { status: 502, headers: { "Content-Type": "application/json" } }\n    );\n  }\n\n  const content = await upstream.text();\n  return new Response(JSON.stringify({ content }), {\n    status: 200,\n    headers: { "Content-Type": "application/json" },\n  });\n});\n```\n\n### 前端调用代码（Web / MiniProgram 通用）\n\n**推荐方式（supabase client 可用时）：**\n\n```typescript\n/**\n * 通过 Edge Function 抓取网页内容。\n * @param url - 目标网页完整 URL\n * @param options - 可选的输出控制参数\n * @returns 网页 Markdown 文本\n */\nasync function fetchWebPage(\n  url: string,\n  options?: {\n    returnFormat?: "markdown" | "html" | "text" | "screenshot" | "pageshot";\n    withImagesSummary?: boolean;\n    withLinksSummary?: boolean;\n    targetSelector?: string;\n    removeSelector?: string;\n    timeout?: number;\n    noCache?: boolean;\n  }\n): Promise<string> {\n  const { data, error } = await supabase.functions.invoke("web-reader", {\n    body: { url, ...options },\n  });\n  if (error) throw error;\n  if (!data?.content) throw new Error("返回内容为空");\n  return data.content;\n}\n```\n\n**备用方式（无法使用 supabase client 时）：**\n\n```typescript\n/**\n * 通过原生 fetch 调用 Edge Function 抓取网页内容。\n * @param url - 目标网页完整 URL\n * @param options - 可选的输出控制参数\n * @returns 网页 Markdown 文本\n */\nasync function fetchWebPage(\n  url: string,\n  options?: {\n    returnFormat?: "markdown" | "html" | "text";\n    withImagesSummary?: boolean;\n    withLinksSummary?: boolean;\n    targetSelector?: string;\n    removeSelector?: string;\n    timeout?: number;\n    noCache?: boolean;\n  }\n): Promise<string> {\n  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/web-reader`, {\n    method: "POST",\n    headers: { "Content-Type": "application/json" },\n    body: JSON.stringify({ url, ...options }),\n  });\n\n  if (res.status === 429) {\n    const err = await res.json();\n    throw new Error(`配额已用尽：${err.message ?? res.statusText}`);\n  }\n  if (res.status === 402) {\n    const err = await res.json();\n    throw new Error(`余额不足：${err.message ?? res.statusText}`);\n  }\n  if (!res.ok) throw new Error(`请求失败：${res.status}`);\n\n  const json = await res.json();\n  if (!json.content) throw new Error("返回内容为空");\n  return json.content;\n}\n```\n\n---\n\n## 参数说明\n\n### 请求参数\n\n| 参数名 | 类型 | 必填 | 说明 |\n|--------|------|------|------|\n| `url` | string | 是 | 目标网页的完整 URL，含 scheme（如 `https://example.com`） |\n| `returnFormat` | string | 否 | 返回格式：`markdown`（默认）/ `html` / `text` / `screenshot` / `pageshot` |\n| `withImagesSummary` | boolean | 否 | 是否在内容中附加图片描述摘要 |\n| `withLinksSummary` | boolean | 否 | 是否在内容末尾附加链接汇总 |\n| `targetSelector` | string | 否 | CSS 选择器，仅提取页面特定元素内容 |\n| `removeSelector` | string | 否 | CSS 选择器，从结果中移除特定元素 |\n| `timeout` | number | 否 | 等待页面加载的超时时间（秒） |\n| `noCache` | boolean | 否 | 设为 `true` 禁用缓存，强制重新抓取 |\n| `accept` | string | 否 | 请求头 `Accept` 值：`text/html`（默认）或 `text/event-stream`（开启 SSE 流式模式） |\n\n### 返回字段说明\n\n| 字段路径 | 类型 | 说明 |\n|----------|------|------|\n| `content` | string | 目标网页的结构化 Markdown 文本，包含标题、正文及可选的图片摘要、链接列表 |\n\n---\n\n## 注意事项\n\n- **密钥安全**：`INTEGRATIONS_API_KEY` 仅可在 Edge Function 服务端读取，严禁暴露到前端。\n- **错误处理**：务必处理 401（Token 无效）、403（GFW 过滤）、429（配额超限）和 402（余额不足）。\n- **计费**：本插件免费（`original_price: 0.00`，`enable_billing: false`），但仍会统计调用次数。\n- **GFW 过滤**：JWT Payload 中的 `filter_gfw` 字段控制是否过滤 GFW 屏蔽域名，被过滤的 URL 将返回 403。\n- **URL 编码**：目标 URL 需经过 `encodeURIComponent` 编码后再拼接到路径中，避免特殊字符导致路由解析错误。\n- **响应格式**：默认返回 `text/plain` 格式的 Markdown，Edge Function 已将其包装为 `{ content: string }` JSON，方便前端直接使用。\n- **流式响应**：如需流式接收内容，可在请求头中设置 `Accept: text/event-stream`，SSE 流式处理实现见下方"SSE 流式处理"章节。\n\n---\n\n## SSE 流式处理\n\n当请求头设置 `Accept: text/event-stream` 时，上游服务以 SSE（Server-Sent Events）格式流式返回内容，每个 SSE 事件携带部分 Markdown 文本。流式模式适用于大页面实时渲染场景。\n\n### SSE 事件格式\n\n```\ndata: <部分 Markdown 文本>\n\ndata: <更多 Markdown 文本>\n\ndata: [DONE]\n\n```\n\n- 每条 `data:` 行携带一段内容片段。\n- 收到 `data: [DONE]` 表示流结束。\n\n### 生成期 SSE 流式调用示例\n\n```typescript\nconst apiKey = process.env["INTEGRATIONS_API_KEY"]!;\n\n/**\n * 以 SSE 流式模式抓取目标网页，实时处理返回的 Markdown 片段。\n * @param targetUrl - 目标网页的完整 URL\n * @param onChunk - 每收到一段内容时的回调函数\n * @returns 完整 Markdown 文本\n */\nasync function fetchWebPageSSE(\n  targetUrl: string,\n  onChunk?: (chunk: string) => void\n): Promise<string> {\n  const encodedUrl = encodeURIComponent(targetUrl);\n  const endpoint =\n    `https://app-bmyoogysfs3l-api-ELbWqODdAgNY-gateway.appmiaoda.com/${encodedUrl}`;\n\n  const response = await fetch(endpoint, {\n    method: "GET",\n    headers: {\n      "X-Gateway-Authorization": `Bearer ${apiKey}`,\n      "Accept": "text/event-stream",\n    },\n  });\n\n  if (response.status === 401) throw new Error("鉴权失败：JWT Token 缺失或无效");\n  if (response.status === 403) throw new Error("目标 URL 被 GFW 过滤，无法访问");\n  if (!response.ok) throw new Error(`HTTP 错误：${response.status}`);\n  if (!response.body) throw new Error("响应体为空，无法读取流");\n\n  const reader = response.body.getReader();\n  const decoder = new TextDecoder();\n  let buffer = "";\n  let fullContent = "";\n\n  while (true) {\n    const { done, value } = await reader.read();\n    if (done) break;\n\n    buffer += decoder.decode(value, { stream: true });\n    const lines = buffer.split("\\n");\n    buffer = lines.pop() ?? "";\n\n    for (const line of lines) {\n      if (!line.startsWith("data:")) continue;\n      const payload = line.slice(5).trim();\n      if (payload === "[DONE]") break;\n      if (payload) {\n        fullContent += payload;\n        onChunk?.(payload);\n      }\n    }\n  }\n\n  return fullContent;\n}\n\n// 示例：流式抓取并实时打印\nawait fetchWebPageSSE("https://example.com", (chunk) => {\n  Deno.stdout.write(new TextEncoder().encode(chunk));\n});\n```\n\n### 前端 SSE 流式调用示例（Web 平台）\n\n前端需通过 Edge Function 中转流式请求，Edge Function 需将上游 SSE 流透传给客户端。\n\n```typescript\n/**\n * 通过 Edge Function SSE 代理抓取网页，实时处理内容片段。\n * @param url - 目标网页完整 URL\n * @param onChunk - 每收到一段内容时的回调函数\n * @returns 完整 Markdown 文本\n */\nasync function fetchWebPageStream(\n  url: string,\n  onChunk?: (chunk: string) => void\n): Promise<string> {\n  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/web-reader`, {\n    method: "POST",\n    headers: {\n      "Content-Type": "application/json",\n      "Accept": "text/event-stream",\n    },\n    body: JSON.stringify({ url }),\n  });\n\n  if (!res.ok) throw new Error(`请求失败：${res.status}`);\n  if (!res.body) throw new Error("响应体为空");\n\n  const reader = res.body.getReader();\n  const decoder = new TextDecoder();\n  let buffer = "";\n  let fullContent = "";\n\n  while (true) {\n    const { done, value } = await reader.read();\n    if (done) break;\n\n    buffer += decoder.decode(value, { stream: true });\n    const lines = buffer.split("\\n");\n    buffer = lines.pop() ?? "";\n\n    for (const line of lines) {\n      if (!line.startsWith("data:")) continue;\n      const payload = line.slice(5).trim();\n      if (payload === "[DONE]") break;\n      if (payload) {\n        fullContent += payload;\n        onChunk?.(payload);\n      }\n    }\n  }\n\n  return fullContent;\n}\n```', observation=<ObservationType.SKILL: 'skill'>, skill='web-reader', success=True, data={'skill_path': '/workspace/miaoda_skills/prompts/managed/web-reader/SKILL.md', 'scripts_path': None})
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+THOUGHT: Now fetch the MiniMax API docs:
+COMMAND:
+curl -s -H "X-Gateway-Authorization: Bearer $INTEGRATIONS_API_KEY" "https://app-bmyoogysfs3l-api-ELbWqODdAgNY-gateway.appmiaoda.com/$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://platform.minimaxi.com/docs/api-reference/image-generation-t2i", safe=""))')" 2>/dev/null | head -150
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+Title: 文生图 - MiniMax 开放平台文档中心
+
+URL Source: https://platform.minimaxi.com/docs/api-reference/image-generation-t2i
+
+Markdown Content:
+# 文生图 - MiniMax 开放平台文档中心
+
+> ## Documentation Index
+> 
+> 
+> Fetch the complete documentation index at: [/docs/llms.txt](https://platform.minimaxi.com/docs/llms.txt)
+> 
+> 
+> Use this file to discover all available pages before exploring further.
+
+[跳转到主要内容](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#content-area)
+
+🎉 MiniMax-M3 全新发布！你触手可得的 Frontier Model，编程及Agent。[查看文档](https://platform.minimaxi.com/docs/guides/models-intro) ➔
+
+[MiniMax 开放平台文档中心 home page![Image 1: light logo](https://mintcdn.com/minimax-zh/1UjvBcdoC6r0UeyA/logo/light.svg?fit=max&auto=format&n=1UjvBcdoC6r0UeyA&q=85&s=672d724b639b2d88d0702fae329ea4f8)![Image 2: dark logo](https://mintcdn.com/minimax-zh/1UjvBcdoC6r0UeyA/logo/dark.svg?fit=max&auto=format&n=1UjvBcdoC6r0UeyA&q=85&s=fccd04ab72bc7ea88aefe5609e9a25f1)](https://minimaxi.com/)
+
+简体中文
+
+搜索...
+
+Ctrl K
+
+*   [文档](https://platform.minimaxi.com/docs)
+*   [定价](https://platform.minimaxi.com/docs/pricing/overview)
+*   [控制台](https://platform.minimaxi.com/user-center/basic-information)
+
+[登录](https://platform.minimaxi.com/login)
+
+搜索...
+
+Navigation
+
+图片生成
+
+文生图
+
+[开发指南](https://platform.minimaxi.com/docs/guides/models-intro)[API](https://platform.minimaxi.com/docs/api-reference/api-overview)[Token Plan](https://platform.minimaxi.com/docs/token-plan/intro)[定价](https://platform.minimaxi.com/docs/pricing/overview)[更新日志](https://platform.minimaxi.com/docs/release-notes/models)
+
+### API 指引
+
+*   [接口概览](https://platform.minimaxi.com/docs/api-reference/api-overview)
+*   [速率限制](https://platform.minimaxi.com/docs/guides/rate-limits)
+*   [错误码查询](https://platform.minimaxi.com/docs/api-reference/errorcode)
+
+![Image 3: https://filecdn.minimax.chat/public/4ab63cda-da2a-4c77-b1c7-900d2562073f.png](https://filecdn.minimax.chat/public/4ab63cda-da2a-4c77-b1c7-900d2562073f.png)
+### 文本
+
+*   [Anthropic SDK（推荐）](https://platform.minimaxi.com/docs/api-reference/text-anthropic-api)
+*   [OpenAI SDK](https://platform.minimaxi.com/docs/api-reference/text-openai-api)
+*   [AI SDK](https://platform.minimaxi.com/docs/api-reference/text-ai-sdk)
+*   Anthropic API  
+    *   [POST Messages API](https://platform.minimaxi.com/docs/api-reference/text-chat-anthropic)
+
+*   OpenAI Chat Completions API  
+    *   [POST Chat Completions API](https://platform.minimaxi.com/docs/api-reference/text-chat-openai)
+
+*   OpenAI Responses API  
+    *   [POST 对话生成](https://platform.minimaxi.com/docs/api-reference/responses-create)
+    *   [POST Token 估算](https://platform.minimaxi.com/docs/api-reference/responses-input-tokens)
+
+![Image 4: https://filecdn.minimax.chat/public/ebfd6f8e-5b5a-4edd-8253-6c731d3b368f.png](https://filecdn.minimax.chat/public/ebfd6f8e-5b5a-4edd-8253-6c731d3b368f.png)
+### 语音
+
+*   同步语音合成  
+    *   [POST 同步语音合成 HTTP](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)
+    *   [WSS 同步语音合成 WebSocket](https://platform.minimaxi.com/docs/api-reference/speech-t2a-websocket)
+
+*   异步长文本语音合成  
+    *   [POST 创建异步语音合成任务](https://platform.minimaxi.com/docs/api-reference/speech-t2a-async-create)
+    *   [GET 查询语音生成任务状态](https://platform.minimaxi.com/docs/api-reference/speech-t2a-async-query)
+
+*   音色快速复刻  
+    *   [POST 上传复刻音频](https://platform.minimaxi.com/docs/api-reference/voice-cloning-uploadcloneaudio)
+    *   [POST 上传示例音频](https://platform.minimaxi.com/docs/api-reference/voice-cloning-uploadprompt)
+    *   [POST 快速复刻](https://platform.minimaxi.com/docs/api-reference/voice-cloning-clone)
+
+*   音色设计  
+    *   [POST 音色设计](https://platform.minimaxi.com/docs/api-reference/voice-design-design)
+
+*   声音管理  
+    *   [POST 查询可用音色](https://platform.minimaxi.com/docs/api-reference/voice-management-get)
+    *   [POST 删除音色](https://platform.minimaxi.com/docs/api-reference/voice-management-delete)
+
+![Image 5: https://filecdn.minimax.chat/public/766ab356-4817-4bf1-8849-0f64728d811f.png](https://filecdn.minimax.chat/public/766ab356-4817-4bf1-8849-0f64728d811f.png)
+### 视频
+
+*   视频生成  
+    *   [POST 创建文生视频任务](https://platform.minimaxi.com/docs/api-reference/video-generation-t2v)
+    *   [POST 创建图生视频任务](https://platform.minimaxi.com/docs/api-reference/video-generation-i2v)
+    *   [POST 创建首尾帧生成视频任务](https://platform.minimaxi.com/docs/api-reference/video-generation-fl2v)
+    *   [POST 创建主体参考生成视频任务](https://platform.minimaxi.com/docs/api-reference/video-generation-s2v)
+    *   [GET 查询视频生成任务状态](https://platform.minimaxi.com/docs/api-reference/video-generation-query)
+    *   [GET 生成视频下载](https://platform.minimaxi.com/docs/api-reference/video-generation-download)
+
+*   视频生成Agent  
+
+![Image 6: https://filecdn.minimax.chat/public/c67ded66-6213-441f-b784-6866c6943aef.png](https://filecdn.minimax.chat/public/c67ded66-6213-441f-b784-6866c6943aef.png)
+### 图片
+
+*   图片生成  
+    *   [POST 文生图](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i)
+    *   [POST 图生图](https://platform.minimaxi.com/docs/api-reference/image-generation-i2i)
+
+![Image 7: https://filecdn.minimax.chat/public/0f1ab37b-78fd-41ab-945d-a20c1ac436b4.png](https://filecdn.minimax.chat/public/0f1ab37b-78fd-41ab-945d-a20c1ac436b4.png)
+### 音乐
+
+*   音乐生成  
+    *   [POST 音乐生成](https://platform.minimaxi.com/docs/api-reference/music-generation)
+    *   [POST 翻唱前处理](https://platform.minimaxi.com/docs/api-reference/music-cover-preprocess)
+    *   [POST 歌词生成](https://platform.minimaxi.com/docs/api-reference/lyrics-generation)
+
+![Image 8: https://filecdn.minimax.chat/public/1291e3fd-3307-4344-ba3e-40fa3780419f.png](https://filecdn.minimax.chat/public/1291e3fd-3307-4344-ba3e-40fa3780419f.png)
+### 文件
+
+*   文件管理  
+    *   [POST 上传](https://platform.minimaxi.com/docs/api-reference/file-management-upload)
+    *   [GET 列出](https://platform.minimaxi.com/docs/api-reference/file-management-list)
+    *   [GET 检索](https://platform.minimaxi.com/docs/api-reference/file-management-retrieve)
+    *   [GET 下载](https://platform.minimaxi.com/docs/api-reference/file-management-retrieve-content)
+    *   [POST 删除](https://platform.minimaxi.com/docs/api-reference/file-management-delete)
+
+### 模型
+
+*   OpenAI 兼容  
+    *   [GET 获取模型列表](https://platform.minimaxi.com/docs/api-reference/models/openai/list-models)
+    *   [GET 获取单个模型详情](https://platform.minimaxi.com/docs/api-reference/models/openai/retrieve-model)
+
+*   Anthropic 兼容  
+    *   [GET 获取模型列表](https://platform.minimaxi.com/docs/api-reference/models/anthropic/list-models)
+    *   [GET 获取单个模型详情](https://platform.minimaxi.com/docs/api-reference/models/anthropic/retrieve-model)
+
+Image Generation
+
+cURL
+
+```
+curl --request POST \
+  --url https://api.minimaxi.com/v1/image_generation \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '
+{
+  "model": "image-01",
+  "prompt": "A man in a white t-shirt, full-body, standing front view, outdoors, with the Venice Beach sign in the background, Los Angeles. Fashion photography in 90s documentary style, film grain, photorealistic.",
+  "aspect_ratio": "16:9",
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+curl -s -H "X-Gateway-Authorization: Bearer $INTEGRATIONS_API_KEY" "https://app-bmyoogysfs3l-api-ELbWqODdAgNY-gateway.appmiaoda.com/$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://platform.minimaxi.com/docs/api-reference/image-generation-t2i", safe=""))')" 2>/dev/null | tail -200
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+可用选项:
+
+`image-01`,
+
+`image-01-live`
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-prompt)
+
+prompt
+
+string
+
+必填
+
+图像的文本描述，最长 1500 字符
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-style)
+
+style
+
+object
+
+画风设置，仅当 `model` 为 `image-01-live` 时生效
+
+Show child attributes
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-aspect-ratio)
+
+aspect_ratio
+
+enum<string>
+
+图像宽高比，默认为 1:1。可选值：
+
+*   `1:1` (1024x1024)
+*   `16:9` (1280x720)
+*   `4:3` (1152x864)
+*   `3:2` (1248x832)
+*   `2:3` (832x1248)
+*   `3:4` (864x1152)
+*   `9:16` (720x1280)
+*   `21:9` (1344x576) (仅适用于`image-01`)
+
+可用选项:
+
+`1:1`,
+
+`16:9`,
+
+`4:3`,
+
+`3:2`,
+
+`2:3`,
+
+`3:4`,
+
+`9:16`,
+
+`21:9`
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-width)
+
+width
+
+integer
+
+生成图片的宽度（像素）。仅当 model 为 `image-01` 时生效。注意：`width` 和 `height` 需同时设置，取值范围[512, 2048]，且必须是 8 的倍数。若与 `aspect_ratio` 同时设置，则优先使用 `aspect_ratio`
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-height)
+
+height
+
+integer
+
+生成图片的高度（像素）。仅当 model 为 `image-01` 时生效。注意：`width` 和 `height` 需同时设置，取值范围[512, 2048]，且必须是 8 的倍数。若与 `aspect_ratio` 同时设置，则优先使用 `aspect_ratio`
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-response-format)
+
+response_format
+
+enum<string>
+
+默认值:url
+
+返回图片的形式，默认为 url。可选值：url, base64。 ⚠️ 注意：url 的有效期为 24 小时
+
+可用选项:
+
+`url`,
+
+`base64`
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-seed)
+
+seed
+
+integer<int64>
+
+随机种子。使用相同的 seed 和参数，可以生成内容相近的图片，用于复现结果。如未提供，算法会对 n 张图单独生成随机种子
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-n)
+
+n
+
+integer
+
+默认值:1
+
+单次请求生成的图片数量，取值范围[1, 9]，默认为 1
+
+必填范围: `1 <= x <= 9`
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-prompt-optimizer)
+
+prompt_optimizer
+
+boolean
+
+默认值:false
+
+是否开启 prompt 自动优化，默认为 `false`.
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#body-aigc-watermark)
+
+aigc_watermark
+
+boolean
+
+是否在生成的图片中添加水印，默认为 `false`
+
+#### 响应
+
+200 - application/json
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#response-data)
+
+data
+
+object
+
+Show child attributes
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#response-metadata)
+
+metadata
+
+object
+
+因内容安全检查失败而未返回的图片数量
+
+Show child attributes
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#response-id)
+
+id
+
+string
+
+生成任务的 ID，用于后续查询任务状态
+
+[​](https://platform.minimaxi.com/docs/api-reference/image-generation-t2i#response-base-resp)
+
+base_resp
+
+object
+
+Show child attributes
+
+此页面对您有帮助吗？
+
+是 否
+
+[查询视频Agent任务状态](https://platform.minimaxi.com/docs/api-reference/video-agent-query)[图生图](https://platform.minimaxi.com/docs/api-reference/image-generation-i2i)
+
+Ctrl+I
+
+[MiniMax 开放平台文档中心 home page![Image 9: light logo](https://mintcdn.com/minimax-zh/1UjvBcdoC6r0UeyA/logo/light.svg?fit=max&auto=format&n=1UjvBcdoC6r0UeyA&q=85&s=672d724b639b2d88d0702fae329ea4f8)![Image 10: dark logo](https://mintcdn.com/minimax-zh/1UjvBcdoC6r0UeyA/logo/dark.svg?fit=max&auto=format&n=1UjvBcdoC6r0UeyA&q=85&s=fccd04ab72bc7ea88aefe5609e9a25f1)](https://minimaxi.com/)
+
+[discord](https://www.minimax.io/discord)[x](https://x.com/MiniMax_AI)[linkedin](https://www.linkedin.com/company/minimax-ai)[github](https://github.com/MiniMax-AI)
+
+19921192575
+
+工作日：10:00-19:00
+
+备案信息
+
+[沪公网安备31010402010179号](https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31010402010179)[沪ICP备2023003282号-38](https://beian.miit.gov.cn/)
+
+MiniMax官方交流群
+
+[MiniMax官方交流群](https://filecdn.minimax.chat/public/20260415-184628.jpeg)
+
+开放平台公众号
+
+[开放平台公众号](https://filecdn.minimax.chat/public/46a6af8f-eeef-462b-b4a3-0da2481ebd43.png)
+
+MiniMax官方客服
+
+[MiniMax官方客服](https://filecdn.minimax.chat/qrcode/customer-service/img_9bb518846379.jpg)
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+AgentThinkAction(thought='\nMiniMax image generation API:\n- Endpoint: POST https://api.minimaxi.com/v1/image_generation\n- Auth: Bearer token (API Key)\n- Request body:\n  - model: "image-01" or "image-01-live" (required)\n  - prompt: string (required, max 1500 chars)\n  - aspect_ratio: "1:1" | "16:9" | "4:3" | "3:2" | "2:3" | "3:4" | "9:16" | "21:9" (default 1:1)\n  - response_format: "url" | "base64" (default "url")\n  - n: 1-9 (default 1)\n  - prompt_optimizer: boolean (default false)\n  - aigc_watermark: boolean (default false)\n- Response:\n  - data: object with images\n  - id: task ID\n  - base_resp: status\n\nKey difference from other providers: MiniMax image generation is SYNCHRONOUS (returns immediately with image URLs), not async. The response contains `data` with the image URLs directly. The `id` is the task ID but the images come back in the same response.\n\nLet me check what the full response structure is. Based on the API doc:\n- Response has `data` (contains the images), `metadata`, `id`, `base_resp`\n- The data field should have image URLs\n\nSince it\'s synchronous, I can:\n1. Create an edge function that calls MiniMax API\n2. Return the image URL directly (status: \'completed\', imageId: imageUrl)\n3. In queryImageGenerationWithProfile, for minimax provider, just return status completed since the imageId IS the URL\n\nLet me plan:\n- Edge function: minimax-generate-image\n  - POST to https://api.minimaxi.com/v1/image_generation\n  - Return { imageId: url, status: \'completed\' } since it\'s synchronous\n- In video.ts startImageGenerationWithProfile: add minimax branch\n  - For minimax, call edge function and return completed immediately\n- In queryImageGenerationWithProfile: add minimax branch (already completed)\n\nFor the aspect_ratio mapping:\n- Size "720x1280" → "9:16"\n- Size "1280x720" → "16:9"  \n- Size "1024x1024" → "1:1"\n\nDefault model: "image-01"\nDefault URL: "https://api.minimaxi.com/v1"\n\nNow for ApiSettingsDialog:\n- Add minimax to IMAGE_OPTIONS\n- Add to PROVIDER_DEFAULTS: { url: \'https://api.minimaxi.com/v1\', model: \'image-01\' }\n- Add image-specific default: provider === \'minimax\'\n\nFor the showModelName logic, minimax should show model name.\nFor fixedUrlProviders, minimax is NOT in the list (user needs to see the URL), but actually the URL is standard, so it can be fixed. Let me add it to fixedUrlProviders OR just provide a default URL that auto-fills.\n\nActually looking at other providers: vidu, kling, jimeng, sensenova are in fixedUrlProviders. MiniMax has a well-known URL too, so I should add it to fixedUrlProviders. But user might want to change it. Let me just auto-fill the default URL but leave it editable (not in fixedUrlProviders).\n\nActually let me just add it to PROVIDER_DEFAULTS and getProviderDefaults for image type, and not add to fixedUrlProviders so user sees the URL.\n', action=<ActionType.THINK: 'think'>)
+</action>
+<observation>
+AgentThinkObservation(content='Your thought has been logged.', observation=<ObservationType.THINK: 'think'>)
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cat /workspace/app-bmyoogysfs3l/supabase/functions/sensenova-generate-image/index.ts | head -60
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+import { serve } from "https://deno.land/std/http/server.ts";
+
+function corsHeaders(): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
+/** Convert user size to SenseNova size string */
+function sizeToSenseNovaSize(size: string): string {
+  // SenseNova supported sizes:
+  // 1664x2496 (2:3) | 2496x1664 (3:2) | 1760x2368 (3:4) | 2368x1760 (4:3)
+  // 1824x2272 (4:5) | 2272x1824 (5:4) | 2048x2048 (1:1) | 2752x1536 (16:9)
+  // 1536x2752 (9:16) | 3072x1376 (21:9) | 1344x3136 (9:21)
+  const map: Record<string, string> = {
+    "720x1280": "1536x2752",
+    "1280x720": "2752x1536",
+    "1080x1920": "1536x2752",
+    "1920x1080": "2752x1536",
+    "1024x1024": "2048x2048",
+    "512x512": "2048x2048",
+  };
+  if (map[size]) return map[size];
+  const validSizes = [
+    "1664x2496", "2496x1664", "1760x2368", "2368x1760",
+    "1824x2272", "2272x1824", "2048x2048", "2752x1536",
+    "1536x2752", "3072x1376", "1344x3136",
+  ];
+  if (validSizes.includes(size)) return size;
+  return "2752x1536"; // default 16:9
+}
+
+serve(async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method Not Allowed" }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Invalid request body" }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+
+  const userApiKey = (body.sensenova_api_key as string) ?? "";
+  const envApiKey = Deno.env.get("SENSENOVA_API_KEY") ?? "";
+  const apiKey = userApiKey || envApiKey;
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+grep -n "vidu\|sensenova\|kling\|jimeng" /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx | grep -E "fixedUrl|showModelName|IMAGE_OPTIONS|PROVIDER_DEFAULTS|getProviderDefaults"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+219:  const fixedUrlProviders = ['vidu', 'kling', 'jimeng', 'sensenova'];
+222:  const showModelName = type !== 'image' || (provider !== 'vidu' && provider !== 'jimeng');
+[The command completed with exit code 0.]
+[Current working directory: /workspace]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+TodoAction(todos=[TodoItem(id='1', status='completed', priority=None, content='将场景/字幕分句逻辑迁移到 text-segmentation.ts 模块', details='', group=None, agent_name=None), TodoItem(id='2', status='in_progress', priority=None, content='增加 MiniMax 图片模型预设支持', details='', group=None, agent_name=None)], command='update', thought='', action=<ActionType.TODO: 'todo'>, content='')
+</action>
+<observation>
+TodoObservation(content='<system-reminder>\nYour todo list has changed. Here are the latest contents of your todo list:\n\n1. 将场景/字幕分句逻辑迁移到 text-segmentation.ts 模块 [completed]\n2. 增加 MiniMax 图片模型预设支持 [in_progress]\n3. 运行测试 & lint 验证 [pending]\n  vitest run + npm run lint\n</system-reminder>', state=TodoState(items=[TodoItem(id='1', status='completed', priority=None, content='将场景/字幕分句逻辑迁移到 text-segmentation.ts 模块', details='', group=None, agent_name=None), TodoItem(id='2', status='in_progress', priority=None, content='增加 MiniMax 图片模型预设支持', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority=None, content='运行测试 & lint 验证', details='vitest run + npm run lint', group=None, agent_name=None)], updated_at='2026-06-15T15:26:34.320683+00:00'), system_reminder='', observation=<ObservationType.TODO: 'todo'>)
+</observation>
+<action>
+FileReadAction(path='/workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[53, 120], user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx:
+    53 const IMAGE_OPTIONS = [
+    54   { value: 'jimeng', label: '即梦' },
+    55   { value: 'kling', label: '可灵' },
+    56   { value: 'vidu', label: 'Vidu' },
+    57   { value: 'sensenova', label: '商汤SenseNova' },
+    58   { value: 'other', label: '其他' },
+    59 ];
+    60 
+    61 const DEFAULT_MODEL_CONFIG: ModelConfig = {
+    62   llm: { source: 'builtin', provider: 'openai' },
+    63   tts: { source: 'builtin', provider: 'doubao' },
+    64   video: { source: 'builtin', provider: 'jimeng' },
+    65   image: { source: 'builtin', provider: 'jimeng' },
+    66 };
+    67 
+    68 interface ApiSettingsDialogProps {
+    69   open: boolean;
+    70   onOpenChange: (open: boolean) => void;
+    71   onSave?: (config: ApiConfig) => void;
+    72 }
+    73 
+    74 function emptyProviderConfig(): ModelProviderConfig {
+    75   return { source: 'builtin', provider: '', apiBaseUrl: '', apiKey: '', modelName: '' };
+    76 }
+    77 
+    78 function genId() {
+    79   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+    80 }
+    81 
+    82 function emptyProfile(): CustomApiProfile {
+    83   return { id: genId(), name: '', provider: '', apiBaseUrl: '', apiKey: '', modelName: '', isDefault: false, extra: {} };
+    84 }
+    85 
+    86 // 提供商默认配置映射（按模型类型区分）
+    87 const PROVIDER_DEFAULTS: Record<string, { url: string; model: string }> = {
+    88   openai:   { url: 'https://api.openai.com/v1',   model: 'gpt-4o-mini' },
+    89   deepseek: { url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+    90   qwen:     { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-max' },
+    91   kimi:     { url: 'https://api.moonshot.cn/v1',   model: 'moonshot-v1-8k' },
+    92   doubao:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-pro-32k' },
+    93   jimeng:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' },
+    94   kling:    { url: 'https://api.klingai.com/v1',   model: '' },
+    95   vidu:     { url: 'https://api.vidu.cn',          model: 'viduq2' },
+    96   sensenova:{ url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' },
+    97 };
+    98 
+    99 /** 获取某供应商在指定模型类型下的默认配置 */
+   100 function getProviderDefaults(provider: string, type: keyof ModelConfig): { url: string; model: string } | undefined {
+   101   const base = PROVIDER_DEFAULTS[provider];
+   102   if (!base) return undefined;
+   103   // 图片模型个性化默认值
+   104   if (type === 'image') {
+   105     if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' };
+   106     if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: 'viduq2' };
+   107     if (provider === 'sensenova') return { url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' };
+   108     if (provider === 'kling') return { url: '', model: '' };
+   109   }
+   110   // 视频模型个性化默认值
+   111   if (type === 'video') {
+   112     if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-video-generate-3.0' };
+   113     if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: '' };
+   114     if (provider === 'kling') return { url: '', model: '' };
+   115   }
+   116   return base;
+   117 }
+   118 
+   119 // ─── Profile List Item ─────────────────────────────────────────────────────
+   120 interface ProfileListItemProps {
+
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx]
+Thought: Now I have everything I need. Let me make all changes in parallel:
+Command: str_replace
+Old String: ```
+const IMAGE_OPTIONS = [
+  { value: 'jimeng', label: '即梦' },
+  { value: 'kling', label: '可灵' },
+  { value: 'vidu', label: 'Vidu' },
+  { value: 'sensenova', label: '商汤SenseNova' },
+  { value: 'other', label: '其他' },
+];
+```
+New String: ```
+const IMAGE_OPTIONS = [
+  { value: 'jimeng', label: '即梦' },
+  { value: 'kling', label: '可灵' },
+  { value: 'vidu', label: 'Vidu' },
+  { value: 'sensenova', label: '商汤SenseNova' },
+  { value: 'minimax', label: 'MiniMax' },
+  { value: 'other', label: '其他' },
+];
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+  jimeng:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' },
+  kling:    { url: 'https://api.klingai.com/v1',   model: '' },
+  vidu:     { url: 'https://api.vidu.cn',          model: 'viduq2' },
+  sensenova:{ url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' },
+};
+```
+New String: ```
+  jimeng:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' },
+  kling:    { url: 'https://api.klingai.com/v1',   model: '' },
+  vidu:     { url: 'https://api.vidu.cn',          model: 'viduq2' },
+  sensenova:{ url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' },
+  minimax:  { url: 'https://api.minimaxi.com/v1',  model: 'image-01' },
+};
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+  // 图片模型个性化默认值
+  if (type === 'image') {
+    if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' };
+    if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: 'viduq2' };
+    if (provider === 'sensenova') return { url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' };
+    if (provider === 'kling') return { url: '', model: '' };
+  }
+```
+New String: ```
+  // 图片模型个性化默认值
+  if (type === 'image') {
+    if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' };
+    if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: 'viduq2' };
+    if (provider === 'sensenova') return { url: 'https://token.sensenova.cn/v1', model: 'sensenova-u1-fast' };
+    if (provider === 'minimax') return { url: 'https://api.minimaxi.com/v1', model: 'image-01' };
+    if (provider === 'kling') return { url: '', model: '' };
+  }
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/components/ApiSettingsDialog.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/supabase/functions/minimax-generate-image/index.ts]
+Thought: Now create the MiniMax Edge Function and update video.ts simultaneously:
+Command: create
+Created File with Text:
+```
+import { serve } from "https://deno.land/std/http/server.ts";
+
+function corsHeaders(): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
+/**
+ * 将用户传入的 size 字符串（如 "1280x720"）映射为 MiniMax aspect_ratio 枚举值
+ * MiniMax 支持：1:1 | 16:9 | 4:3 | 3:2 | 2:3 | 3:4 | 9:16 | 21:9
+ */
+function sizeToAspectRatio(size: string): string {
+  const map: Record<string, string> = {
+    "1024x1024": "1:1",
+    "512x512":   "1:1",
+    "1280x720":  "16:9",
+    "1920x1080": "16:9",
+    "720x1280":  "9:16",
+    "1080x1920": "9:16",
+    "1152x864":  "4:3",
+    "864x1152":  "3:4",
+    "1248x832":  "3:2",
+    "832x1248":  "2:3",
+  };
+  return map[size] ?? "16:9";
+}
+
+serve(async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method Not Allowed" }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Invalid request body" }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+
+  const userApiKey = (body.minimax_api_key as string) ?? "";
+  const envApiKey = Deno.env.get("MINIMAX_API_KEY") ?? "";
+  const apiKey = userApiKey || envApiKey;
+
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({ error: "缺少 MiniMax API Key" }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+
+  const prompt = (body.prompt as string) ?? "";
+  if (!prompt) {
+    return new Response(
+      JSON.stringify({ error: "缺少 prompt 参数" }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+
+  const size = (body.size as string) ?? "1280x720";
+  const model = (body.model as string) || "image-01";
+  const aspectRatio = sizeToAspectRatio(size);
+
+  try {
+    const resp = await fetch("https://api.minimaxi.com/v1/image_generation", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt: prompt.slice(0, 1500),
+        aspect_ratio: aspectRatio,
+        response_format: "url",
+        n: 1,
+        prompt_optimizer: false,
+      }),
+    });
+
+    const data = await resp.json() as {
+      id?: string;
+      data?: { image_urls?: string[] };
+      base_resp?: { status_code?: number; status_msg?: string };
+    };
+
+    // base_resp.status_code === 0 表示成功
+    const baseCode = data.base_resp?.status_code ?? -1;
+    if (baseCode !== 0) {
+      const errMsg = data.base_resp?.status_msg ?? "MiniMax 图片生成失败";
+      return new Response(
+        JSON.stringify({ error: errMsg }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+      );
+    }
+
+    const imageUrls = data.data?.image_urls ?? [];
+    if (!imageUrls.length) {
+      return new Response(
+        JSON.stringify({ error: "MiniMax 未返回图片 URL" }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+      );
+    }
+
+    // MiniMax 图片生成是同步接口，直接返回 completed
+    return new Response(
+      JSON.stringify({
+        imageId: imageUrls[0],
+        publicUrl: imageUrls[0],
+        status: "completed",
+        taskId: data.id ?? "",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(
+      JSON.stringify({ error: `请求 MiniMax 失败: ${msg}` }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    );
+  }
+});
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-bmyoogysfs3l/supabase/functions/minimax-generate-image/index.ts
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/services/video.ts]
+Thought: 
+Command: str_replace
+Old String: ```
+  // SenseNova 自定义API（通过Edge Function调用，避免前端CORS问题）
+  if (provider === 'sensenova' && apiKey) {
+```
+New String: ```
+  // SenseNova 自定义API（通过Edge Function调用，避免前端CORS问题）
+  if (provider === 'sensenova' && apiKey) {
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/services/video.ts has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/services/video.ts]
+Thought: 
+Command: str_replace
+Old String: ```
+  // SenseNova 自定义API（通过Edge Function调用，避免前端CORS问题）
+  if (provider === 'sensenova' && apiKey) {
+```
+New String: ```
+  // MiniMax 自定义API（同步接口，直接返回图片 URL）
+  if (provider === 'minimax' && apiKey) {
+    const data = await invokeFunction('minimax-generate-image', {
+      prompt: params.prompt,
+      size: params.size ?? '1280x720',
+      minimax_api_key: apiKey.trim(),
+    }) as { imageId?: string; publicUrl?: string; status?: string; error?: string };
+    if (data.error) throw new Error(data.error);
+    if (!data.imageId) throw new Error('MiniMax 未返回图片 URL');
+    return { imageId: data.imageId, status: 'completed' };
+  }
+
+  // SenseNova 自定义API（通过Edge Function调用，避免前端CORS问题）
+  if (provider === 'sensenova' && apiKey) {
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/services/video.ts has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-bmyoogysfs3l/src/services/video.ts]
+Thought: Now add the query branch for minimax in `queryImageGenerationWithProfile`:
+Command: str_replace
+Old String: ```
+  // SenseNova 图片已在生成时下载到Storage，imageId 即为 Storage publicUrl
+  if (provider === 'sensenova' && apiKey) {
+```
+New String: ```
+  // MiniMax 图片已在生成时同步返回，imageId 即为图片 URL
+  if (provider === 'minimax') {
+    return {
+      status: 'completed',
+      progress: 100,
+      image_url: imageId,
+      publicUrl: imageId,
+      error: null,
+    };
+  }
+
+  // SenseNova 图片已在生成时下载到Storage，imageId 即为 Storage publicUrl
+  if (provider === 'sensenova' && apiKey) {
+```
+
+</action>
+<observation>
+The file /workspace/app-bmyoogysfs3l/src/services/video.ts has been edited.
+
 </observation>

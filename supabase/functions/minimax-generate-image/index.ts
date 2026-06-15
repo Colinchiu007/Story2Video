@@ -73,6 +73,13 @@ serve(async (req: Request): Promise<Response> => {
   const model = (body.model as string) || "image-01";
   const aspectRatio = sizeToAspectRatio(size);
 
+  console.log("[minimax-generate-image] request", {
+    model,
+    promptLength: prompt.length,
+    aspectRatio,
+    apiKeyPrefix: apiKey.slice(0, 8) + "...",
+  });
+
   try {
     const resp = await fetch("https://api.minimaxi.com/v1/image_generation", {
       method: "POST",
@@ -90,18 +97,31 @@ serve(async (req: Request): Promise<Response> => {
       }),
     });
 
-    const data = await resp.json() as {
+    console.log("[minimax-generate-image] response status", resp.status);
+
+    const respText = await resp.text();
+    console.log("[minimax-generate-image] response body", respText.slice(0, 2000));
+
+    let data: {
       id?: string;
       data?: { image_urls?: string[] };
       base_resp?: { status_code?: number; status_msg?: string };
     };
+    try {
+      data = JSON.parse(respText);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: `MiniMax 返回非 JSON 响应: ${respText.slice(0, 200)}` }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+      );
+    }
 
     // base_resp.status_code === 0 表示成功
     const baseCode = data.base_resp?.status_code ?? -1;
     if (baseCode !== 0) {
       const errMsg = data.base_resp?.status_msg ?? "MiniMax 图片生成失败";
       return new Response(
-        JSON.stringify({ error: errMsg }),
+        JSON.stringify({ error: errMsg, raw: data }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
       );
     }
@@ -109,7 +129,7 @@ serve(async (req: Request): Promise<Response> => {
     const imageUrls = data.data?.image_urls ?? [];
     if (!imageUrls.length) {
       return new Response(
-        JSON.stringify({ error: "MiniMax 未返回图片 URL" }),
+        JSON.stringify({ error: "MiniMax 未返回图片 URL", raw: data }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
       );
     }
@@ -126,6 +146,7 @@ serve(async (req: Request): Promise<Response> => {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error("[minimax-generate-image] exception", msg);
     return new Response(
       JSON.stringify({ error: `请求 MiniMax 失败: ${msg}` }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
