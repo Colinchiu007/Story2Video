@@ -521,13 +521,19 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
       profiles = profiles.map((p) => ({ ...p, isDefault: p.id === profile.id }));
     }
     const newActiveId = isNew ? profile.id : (getActiveProfileId(type) ?? profile.id);
+    // 计算更新后的完整 modelConfig（不依赖异步 setState，避免闭包读旧值）
+    const updatedModelConfig: ModelConfig = {
+      ...modelConfig,
+      [type]: { ...modelConfig[type], profiles, activeProfileId: newActiveId },
+    };
     updateModelConfig(type, { profiles, activeProfileId: newActiveId });
     setEditingProfile(null);
     toast.success(isNew ? '已添加 API' : '已更新 API');
-    await doSave();
+    await doSave(undefined, updatedModelConfig);
   };
 
-  const doSave = async (opts?: { close?: boolean }) => {
+  const doSave = async (opts?: { close?: boolean }, modelConfigOverride?: ModelConfig) => {
+    const effectiveModelConfig = modelConfigOverride ?? modelConfig;
     const config: ApiConfig = {
       aiSource,
       apiBaseUrl: '',
@@ -537,7 +543,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
       jimengApiKey: jimengApiKey.trim(),
       doubaoVoiceId: doubaoVoiceId.trim(),
       doubaoVoiceName: doubaoVoiceName.trim(),
-      modelConfig,
+      modelConfig: effectiveModelConfig,
     };
 
     setIsSaving(true);
@@ -556,7 +562,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
           jimeng_api_key: jimengApiKey.trim() || null,
           doubao_voice_id: doubaoVoiceId.trim() || null,
           doubao_voice_name: doubaoVoiceName.trim() || null,
-          model_config: modelConfig,
+          model_config: effectiveModelConfig,
         }, { onConflict: 'user_id' });
         if (error) throw error;
       }
