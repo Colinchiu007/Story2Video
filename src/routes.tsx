@@ -4,6 +4,7 @@ import ProgressPage from './pages/ProgressPage';
 import ResultPage from './pages/ResultPage';
 import HistoryPage from './pages/HistoryPage';
 import GalleryPage from './pages/GalleryPage';
+import SegmentManagerPage from './pages/SegmentManagerPage';
 import type { ReactNode } from 'react';
 
 export interface RouteConfig {
@@ -50,6 +51,12 @@ export const routes: RouteConfig[] = [
     name: '图片管理',
     path: '/gallery/:id',
     element: <GalleryPage />,
+    public: true,
+  },
+  {
+    name: '分段管理',
+    path: '/segments/:id',
+    element: <SegmentManagerPage />,
     public: true,
   },
 ];

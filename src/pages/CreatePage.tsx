@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Type, Image, Wand2, Mic, Upload, Play, Pause, ArrowRight, Trash2, Volume2, SlidersHorizontal, User, Download, Save, RotateCcw, FileCheck, Film, Layers } from 'lucide-react';
+import { Type, Image, Wand2, Mic, Upload, Play, Pause, ArrowRight, Trash2, Volume2, SlidersHorizontal, User, Download, Save, RotateCcw, FileCheck, Film, Layers, Music, ListOrdered, GripVertical, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -31,6 +31,8 @@ import type { SubtitleConfig } from '@/components/SubtitleSettings';
 
 const MODES: { key: CreateMode; label: string; icon: React.ElementType; desc: string }[] = [
   { key: 'gallery', label: '图片轮播视频', icon: Image, desc: '生成口播语音和多张图片，组合为轮播视频' },
+  { key: 'audio', label: '音频生成视频', icon: Music, desc: '上传音频文件，识别内容后生成图片并合成视频' },
+  { key: 'batch', label: '分段视频', icon: ListOrdered, desc: '输入多段文案或上传多个音频，生成多个视频片段' },
   { key: 'text', label: '文生视频', icon: Type, desc: '输入文本描述，AI 自动生成视频' },
   { key: 'image', label: '图生视频', icon: Image, desc: '上传参考图片，基于图片生成视频' },
   { key: 'remix', label: '视频Remix', icon: Wand2, desc: '上传已有视频，进行局部编辑' },
@@ -145,6 +147,17 @@ export default function CreatePage() {
   const [userVoices, setUserVoices] = useState<UserVoice[]>([]);
   const [doubaoVoice, setDoubaoVoice] = useState<{ id: string; name: string } | null>(null);
   const [audioDuration, setAudioDuration] = useState(0);
+
+  // Audio mode state
+  const [uploadedAudioFile, setUploadedAudioFile] = useState<File | null>(null);
+  const [uploadedAudioUrl, setUploadedAudioUrl] = useState('');
+  const [uploadedAudioName, setUploadedAudioName] = useState('');
+  const [isRecognizingAudio, setIsRecognizingAudio] = useState(false);
+
+  // Batch mode state
+  const [batchSegments, setBatchSegments] = useState<Array<{ id: string; text: string; audioUrl: string; audioName: string }>>([]);
+  const [batchInputText, setBatchInputText] = useState('');
+  const [isAudioDurationMode, setIsAudioDurationMode] = useState(true);
   // TTS generation cache: avoid re-generating audio if params haven't changed
   const [cachedTts, setCachedTts] = useState<{
     audioUrl: string;
@@ -238,7 +251,6 @@ export default function CreatePage() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const hasContent = prompt.trim().length > 0 || audioText.trim().length > 0;
-  const isAudioDurationMode = seconds === 'audio';
   const hasAudioText = audioText.trim().length > 0;
 
   // Draft auto-save to localStorage
@@ -251,9 +263,10 @@ export default function CreatePage() {
       imageEffect, transitionEffect,
       bgmConfig, subtitleConfig,
       generateBase, generateMerged, perImageDuration,
+      uploadedAudioUrl, uploadedAudioName, batchSegments, batchInputText,
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }, [mode, prompt, audioText, voiceId, speed, vol, pitch, emotion, size, seconds, uploadedImageUrl, remixVideoUrl, remixVideoFileName, imageEffect, transitionEffect, bgmConfig, subtitleConfig, generateBase, generateMerged, perImageDuration, draftRestored]);
+  }, [mode, prompt, audioText, voiceId, speed, vol, pitch, emotion, size, seconds, uploadedImageUrl, remixVideoUrl, remixVideoFileName, imageEffect, transitionEffect, bgmConfig, subtitleConfig, generateBase, generateMerged, perImageDuration, draftRestored, uploadedAudioUrl, uploadedAudioName, batchSegments, batchInputText]);
 
   // Restore draft on mount
   useEffect(() => {
@@ -281,7 +294,11 @@ export default function CreatePage() {
       if (typeof d.generateBase === 'boolean') setGenerateBase(d.generateBase);
       if (typeof d.generateMerged === 'boolean') setGenerateMerged(d.generateMerged);
       if (typeof d.perImageDuration === 'number') setPerImageDuration(d.perImageDuration);
-      if (d.prompt || d.audioText) {
+      if (d.uploadedAudioUrl) setUploadedAudioUrl(d.uploadedAudioUrl);
+      if (d.uploadedAudioName) setUploadedAudioName(d.uploadedAudioName);
+      if (d.batchSegments) setBatchSegments(d.batchSegments);
+      if (d.batchInputText !== undefined) setBatchInputText(d.batchInputText);
+      if (d.prompt || d.audioText || d.uploadedAudioUrl || d.batchInputText || (d.batchSegments && d.batchSegments.length > 0)) {
         toast.info('已自动恢复上次未提交的草稿', { action: { label: '清除', onClick: () => { localStorage.removeItem(DRAFT_KEY); window.location.reload(); } } });
       }
     } catch { /* ignore */ }
@@ -308,6 +325,11 @@ export default function CreatePage() {
     setBgmConfig({ enabled: false, url: '', volume: 5, name: '' });
     setSubtitleConfig({ enabled: false, font: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif', size: 'size3', style: 'style1' });
     setPerImageDuration(6);
+    setUploadedAudioFile(null);
+    setUploadedAudioUrl('');
+    setUploadedAudioName('');
+    setBatchSegments([]);
+    setBatchInputText('');
     toast.success('草稿已清除');
   };
 
@@ -478,6 +500,78 @@ export default function CreatePage() {
     processVideoFile(file);
   };
 
+  const processAudioFile = async (file: File) => {
+    const validTypes = ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
+    const validExts = ['.wav', '.m4a', '.mp3'];
+    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    if (!validTypes.some((t) => file.type.includes(t.replace('audio/', ''))) && !validExts.includes(ext)) {
+      toast.error('仅支持 WAV、M4A、MP3 格式音频');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('音频大小不能超过 20MB');
+      return;
+    }
+    try {
+      const url = await uploadToStorage(file, 'generated-media');
+      setUploadedAudioUrl(url);
+      setUploadedAudioName(file.name);
+      setUploadedAudioFile(file);
+      toast.success('音频上传成功');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '上传失败';
+      toast.error(`音频上传失败: ${msg}`);
+    }
+  };
+
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processAudioFile(file);
+  };
+
+  const handleAudioDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    processAudioFile(file);
+  };
+
+  /**
+   * 将 Blob 转为 base64 字符串（不含 data URL 前缀）
+   */
+  const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        resolve(dataUrl.split(',')[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  /**
+   * 调用 Edge Function 进行短语音识别
+   */
+  const recognizeAudio = async (audioBlob: Blob, format: 'wav' | 'm4a' = 'wav'): Promise<string> => {
+    const speechBase64 = await blobToBase64(audioBlob);
+    const len = audioBlob.size;
+    const { data, error } = await supabase.functions.invoke('short-speech-recognition', {
+      body: {
+        speech: speechBase64,
+        len,
+        format,
+        rate: 16000,
+        cuid: 'web-user-cuid',
+      },
+    });
+    if (error) throw error;
+    if (data?.err_no !== 0) throw new Error(data?.err_msg || `语音识别失败 ${data?.err_no}`);
+    return data.result?.[0] ?? '';
+  };
+
   const handlePreviewAudio = async () => {
     if (!user) {
       toast.error('请先登录后再使用语音合成功能');
@@ -565,6 +659,14 @@ export default function CreatePage() {
       toast.error('请输入语音合成文案');
       return;
     }
+    if (mode === 'audio' && !uploadedAudioUrl) {
+      toast.error('请上传音频文件');
+      return;
+    }
+    if (mode === 'batch' && batchSegments.length === 0 && !batchInputText.trim()) {
+      toast.error('请至少输入一段文案或上传一个音频');
+      return;
+    }
     setShowConfirmDialog(true);
   };
 
@@ -647,8 +749,8 @@ export default function CreatePage() {
         per_image_duration: perImageDuration,
       };
 
-      // --- Gallery mode: auto-generate TTS, images, then synthesize slideshow video ---
-      if (mode === 'gallery') {
+      // --- Gallery / Audio mode: auto-generate TTS (gallery only), images, then synthesize slideshow video ---
+      if (mode === 'gallery' || mode === 'audio') {
         if (!isImageGenerationAvailable()) {
           toast.error('图片轮播视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型（可灵内置AI、Vidu自定义API、商汤SenseNova自定义API等）');
           setIsGenerating(false);
@@ -659,16 +761,33 @@ export default function CreatePage() {
 
         const task = await createVideoTask({
           mode,
-          prompt: audioText.trim(),
+          prompt: audioText.trim() || (mode === 'audio' ? '音频生成视频' : ''),
           size,
           seconds: totalSeconds,
+          audioUrl: mode === 'audio' ? uploadedAudioUrl : undefined,
         });
         updateStep(0, 'completed');
 
-        // Step 1: TTS (reuse cached if params match)
+        // Step 1: TTS (gallery) or use uploaded audio (audio mode)
         updateStep(1, 'active');
         let ttsReused = false;
-        if (audioText.trim()) {
+        if (mode === 'audio') {
+          if (uploadedAudioUrl) {
+            audioUrl = uploadedAudioUrl;
+            // Estimate duration from audioText if not already known
+            finalAudioDuration = audioDuration > 0
+              ? audioDuration
+              : Math.max(8, audioText.trim().length / 3.3);
+            setAudioDuration(finalAudioDuration);
+            updateStep(1, 'completed', '使用上传的音频文件');
+            toast.success(`使用上传音频，预估时长 ${finalAudioDuration.toFixed(1)} 秒`);
+          } else {
+            updateStep(1, 'failed', '未上传音频');
+            setProgressError('未上传音频文件');
+            setIsGenerating(false);
+            return;
+          }
+        } else if (audioText.trim()) {
           const canReuse = cachedTts
             && cachedTts.text === audioText.trim()
             && cachedTts.voiceId === voiceId
@@ -711,17 +830,17 @@ export default function CreatePage() {
             }
           }
         }
-        // 若语音合成失败，按文案字数和语速估算音频时长（中文约3.3字/秒）
+        // 若语音合成失败（gallery）或无音频时长（audio），按文案字数估算音频时长（中文约3.3字/秒）
         const estimatedDuration = finalAudioDuration > 0
           ? finalAudioDuration
           : Math.max(8, audioText.trim().length / 3.3 / Math.max(0.5, speed));
         const imageCount = Math.max(1, Math.ceil(estimatedDuration / perImageDuration));
         const durationLabel = finalAudioDuration > 0
           ? `${finalAudioDuration.toFixed(1)} 秒`
-          : `约 ${estimatedDuration.toFixed(1)} 秒（按字数估算，语音合成失败）`;
+          : `约 ${estimatedDuration.toFixed(1)} 秒（按字数估算）`;
         updateStep(1, 'completed', `时长 ${durationLabel}，将生成 ${imageCount} 张图片${ttsReused ? '（复用已试听音频）' : ''}`);
         if (audioText.trim()) {
-          toast.success(`语音合成${ttsReused ? '复用已生成音频' : finalAudioDuration > 0 ? '完成' : '失败，按字数估算'}，时长 ${durationLabel}，将生成 ${imageCount} 张图片（每${perImageDuration}秒1张）`);
+          toast.success(`语音${mode === 'audio' ? '文件' : (ttsReused ? '复用已生成音频' : finalAudioDuration > 0 ? '合成完成' : '失败，按字数估算')}，时长 ${durationLabel}，将生成 ${imageCount} 张图片（每${perImageDuration}秒1张）`);
         }
 
         // Step 2: BGM mixing
@@ -990,6 +1109,194 @@ export default function CreatePage() {
         return;
       }
 
+      // --- Batch mode: create parent + child tasks, generate TTS and images for each segment ---
+      if (mode === 'batch') {
+        if (!isImageGenerationAvailable()) {
+          toast.error('分段视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型');
+          setIsGenerating(false);
+          return;
+        }
+
+        initProgress(false, false);
+        const lines = batchInputText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+        const segments: Array<{ text: string; audioUrl: string; audioName: string }> = [];
+        for (const line of lines) {
+          segments.push({ text: line, audioUrl: '', audioName: '' });
+        }
+        for (const seg of batchSegments) {
+          segments.push({ text: seg.text, audioUrl: seg.audioUrl, audioName: seg.audioName });
+        }
+        if (segments.length === 0) {
+          toast.error('请至少输入一段文案或上传一个音频');
+          setIsGenerating(false);
+          return;
+        }
+
+        updateStep(0, 'active');
+        const parentTask = await createVideoTask({
+          mode: 'batch',
+          prompt: batchInputText.trim() || '分段视频',
+          size,
+          seconds: 0,
+          totalSegments: segments.length,
+        });
+        await supabase.from('video_tasks').update({
+          ...bgmPayload,
+          ...subtitlePayload,
+          ...versionPayload,
+          image_effect: imageEffect,
+          transition_effect: transitionEffect,
+        }).eq('id', parentTask.id);
+        updateStep(0, 'completed');
+
+        // Create child tasks
+        const childTasks: Array<{ id: string; index: number; text: string; audioUrl: string }> = [];
+        for (let i = 0; i < segments.length; i++) {
+          const seg = await createVideoTask({
+            mode: 'gallery',
+            prompt: segments[i].text,
+            size,
+            seconds: 0,
+            parentId: parentTask.id,
+            segmentIndex: i,
+            totalSegments: segments.length,
+            segmentText: segments[i].text,
+            audioUrl: segments[i].audioUrl || undefined,
+          });
+          childTasks.push({ id: seg.id, index: i, text: segments[i].text, audioUrl: segments[i].audioUrl });
+        }
+        updateStep(1, 'completed', `已创建 ${segments.length} 个分段任务`);
+
+        // Parallel TTS + image generation for each child task
+        updateStep(2, 'active', `正在生成各分段的语音与图片 0/${segments.length}`);
+        let completedSegments = 0;
+        const CONCURRENCY = 2;
+        const segmentResults = await batchParallel(
+          childTasks,
+          async (child) => {
+            try {
+              let segAudioUrl = '';
+              let segAudioDuration = 0;
+
+              // TTS for text segments, or use uploaded audio
+              if (child.audioUrl) {
+                segAudioUrl = child.audioUrl;
+                segAudioDuration = Math.max(8, child.text.length / 3.3);
+              } else {
+                try {
+                  const ttsResult = await generateTTS({
+                    text: child.text,
+                    voiceId,
+                    speed,
+                    vol,
+                    pitch,
+                    emotion: emotion === 'default' ? undefined : emotion,
+                    cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
+                  });
+                  segAudioUrl = ttsResult.audioUrl;
+                  segAudioDuration = ttsResult.audioLength;
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : '语音合成失败';
+                  console.error(`[Batch] Segment ${child.index} TTS failed:`, msg);
+                }
+              }
+
+              const segDuration = segAudioDuration > 0 ? segAudioDuration : Math.max(8, child.text.length / 3.3 / Math.max(0.5, speed));
+              const segImageCount = Math.max(1, Math.ceil(segDuration / perImageDuration));
+
+              // Update task with audio
+              await supabase.from('video_tasks').update({
+                audio_url: segAudioUrl || null,
+                tts_audio_url: segAudioUrl || null,
+                tts_duration_seconds: segAudioDuration > 0 ? Math.ceil(segAudioDuration) : null,
+                seconds: Math.ceil(segDuration),
+              }).eq('id', child.id);
+
+              // Generate image prompts
+              const segSegments = splitTextToScenes(child.text, { targetCount: segImageCount });
+              const segPrompts = generateImagePrompts(segSegments, child.text);
+
+              // Pre-create gallery image records
+              const galleryRecords = await Promise.all(
+                segPrompts.map((p, idx) =>
+                  createGalleryImage({ taskId: child.id, prompt: p, originalPrompt: segSegments[idx] || undefined, index: idx, status: 'pending' })
+                )
+              );
+
+              // Generate images
+              for (let i = 0; i < segPrompts.length; i++) {
+                const record = galleryRecords[i];
+                try {
+                  const res = await startImageGeneration({ prompt: segPrompts[i], size });
+                  let attempts = 0;
+                  const maxAttempts = 60;
+                  while (attempts < maxAttempts) {
+                    await new Promise((r) => setTimeout(r, 3000));
+                    const q = await queryImageGeneration(res.imageId);
+                    if (q.status === 'completed' && q.publicUrl) {
+                      await supabase.from('gallery_images').update({ image_url: q.publicUrl, status: 'success' }).eq('id', record.id);
+                      break;
+                    }
+                    if (q.status === 'failed') {
+                      await supabase.from('gallery_images').update({ status: 'failed', error_message: q.error || '图片生成失败' }).eq('id', record.id);
+                      break;
+                    }
+                    attempts++;
+                  }
+                  if (attempts >= maxAttempts) {
+                    await supabase.from('gallery_images').update({ status: 'failed', error_message: '图片生成超时' }).eq('id', record.id);
+                  }
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  await supabase.from('gallery_images').update({ status: 'failed', error_message: msg }).eq('id', record.id);
+                }
+              }
+
+              // Update child task status
+              const { data: successImages } = await supabase.from('gallery_images').select('count').eq('task_id', child.id).eq('status', 'success').single();
+              const successCount = (successImages?.count as number) || 0;
+              const { data: failedImages } = await supabase.from('gallery_images').select('count').eq('task_id', child.id).eq('status', 'failed').single();
+              const failCount = (failedImages?.count as number) || 0;
+
+              let childStatus = 'images_ready';
+              if (successCount === 0 && failCount > 0) childStatus = 'failed';
+              else if (successCount > 0) childStatus = 'images_ready';
+
+              await supabase.from('video_tasks').update({
+                status: childStatus,
+                error_message: failCount > 0 ? `${failCount} 张图片生成失败` : null,
+              }).eq('id', child.id);
+
+              completedSegments++;
+              updateStep(2, 'active', `正在生成各分段的语音与图片 ${completedSegments}/${segments.length}`);
+              return { success: true, childId: child.id };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              console.error(`[Batch] Segment ${child.index} failed:`, msg);
+              await supabase.from('video_tasks').update({ status: 'failed', error_message: msg }).eq('id', child.id);
+              return { success: false, childId: child.id, error: msg };
+            }
+          },
+          CONCURRENCY,
+        );
+
+        const allFailed = segmentResults.every((r) => (r as { success?: boolean }).success === false);
+        if (allFailed) {
+          const firstErr = (segmentResults.find((r) => (r as { error?: string }).error) as { error?: string })?.error || '所有分段生成失败';
+          await supabase.from('video_tasks').update({ status: 'failed', error_message: firstErr }).eq('id', parentTask.id);
+          updateStep(2, 'failed', firstErr);
+          setProgressError(`生成失败: ${firstErr}`);
+          toast.error(`生成失败: ${firstErr}`);
+        } else {
+          updateStep(2, 'completed', `${completedSegments}/${segments.length} 个分段已完成语音与图片生成`);
+          toast.success(`已生成 ${completedSegments} 个分段，请前往分段管理页面合成视频`);
+          setTimeout(() => setProgressOpen(false), 600);
+          navigate(`/segments/${parentTask.id}`);
+        }
+        setIsGenerating(false);
+        return;
+      }
+
       // Single segment (no text segmentation or only 1 segment)
       if (totalSegments <= 1) {
         initProgress(false, false);
@@ -1192,7 +1499,7 @@ export default function CreatePage() {
 
       {/* Mode Selection */}
       <Tabs value={mode} onValueChange={(v) => setMode(v as CreateMode)} className="mb-6">
-        <TabsList className="grid grid-cols-4 w-full bg-muted h-auto p-1">
+        <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full bg-muted h-auto p-1">
           {MODES.map((m) => (
             <TabsTrigger
               key={m.key}
@@ -1328,27 +1635,216 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* Audio Section */}
+          {/* Audio / Text Input Section - mode dependent */}
           <div className="border-t border-border pt-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <Mic className="h-4 w-4 text-primary" />
-              <Label className="font-medium">语音合成文案</Label>
-            </div>
-            <div className="relative">
-              <Textarea
-                placeholder="输入需要合成的语音文本，生成的音频将用于视频配音（限5000字符）"
-                value={audioText}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v.length <= 5000) setAudioText(v);
-                }}
-                rows={3}
-                className="bg-background border-border resize-none focus-visible:ring-primary"
-              />
-              <span className={`absolute bottom-2 right-2 text-xs ${audioText.length > 4800 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                {audioText.length}/5000
-              </span>
-            </div>
+            {mode === 'audio' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Music className="h-4 w-4 text-primary" />
+                  <Label className="font-medium">音频文件</Label>
+                </div>
+                {!uploadedAudioUrl ? (
+                  <div
+                    className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                    onDragOver={(e) => { e.preventDefault(); }}
+                    onDrop={handleAudioDrop}
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,.wav,.m4a,.mp3';
+                      input.onchange = (e) => handleAudioUpload(e as unknown as React.ChangeEvent<HTMLInputElement>);
+                      input.click();
+                    }}
+                  >
+                    <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">点击或拖拽上传音频文件</p>
+                    <p className="text-xs text-muted-foreground mt-1">支持 WAV、M4A、MP3 格式，最大 20MB</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-3 border border-border rounded-lg bg-muted/20">
+                    <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                      <Music className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{uploadedAudioName || '已上传音频'}</p>
+                      <p className="text-xs text-muted-foreground">{uploadedAudioUrl ? '上传成功' : ''}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setUploadedAudioUrl('');
+                        setUploadedAudioName('');
+                        setUploadedAudioFile(null);
+                        setAudioText('');
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                )}
+                {uploadedAudioUrl && !audioText && (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      if (!uploadedAudioFile) {
+                        toast.error('未找到音频文件');
+                        return;
+                      }
+                      setIsRecognizingAudio(true);
+                      try {
+                        const ext = uploadedAudioFile.name.slice(uploadedAudioFile.name.lastIndexOf('.')).toLowerCase();
+                        const format: 'wav' | 'm4a' = ext === '.m4a' ? 'm4a' : 'wav';
+                        const text = await recognizeAudio(uploadedAudioFile, format);
+                        setAudioText(text);
+                        toast.success('语音识别完成');
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : '识别失败';
+                        toast.error(`语音识别失败: ${msg}`);
+                      } finally {
+                        setIsRecognizingAudio(false);
+                      }
+                    }}
+                    disabled={isRecognizingAudio}
+                    className="w-full"
+                  >
+                    {isRecognizingAudio ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                        识别中...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Mic className="h-4 w-4" />
+                        识别音频内容
+                      </span>
+                    )}
+                  </Button>
+                )}
+                {audioText && (
+                  <div className="relative">
+                    <Textarea
+                      placeholder="识别结果，可编辑修正"
+                      value={audioText}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v.length <= 5000) setAudioText(v);
+                      }}
+                      rows={4}
+                      className="bg-background border-border resize-none focus-visible:ring-primary"
+                    />
+                    <span className={`absolute bottom-2 right-2 text-xs ${audioText.length > 4800 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      {audioText.length}/5000
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {mode === 'batch' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <ListOrdered className="h-4 w-4 text-primary" />
+                  <Label className="font-medium">分段文案</Label>
+                </div>
+                <div className="relative">
+                  <Textarea
+                    placeholder="每行输入一段文案，每段将生成一个独立的视频片段&#10;示例：&#10;第一段文案内容&#10;第二段文案内容&#10;第三段文案内容"
+                    value={batchInputText}
+                    onChange={(e) => setBatchInputText(e.target.value)}
+                    rows={6}
+                    className="bg-background border-border resize-none focus-visible:ring-primary"
+                  />
+                </div>
+                {batchInputText.trim() && (
+                  <div className="text-xs text-muted-foreground">
+                    共 <span className="font-medium text-foreground">{batchInputText.split('\n').filter((l) => l.trim()).length}</span> 个分段
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">或</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">批量上传音频（每个音频对应一个分段）</Label>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,.wav,.m4a,.mp3';
+                      input.multiple = true;
+                      input.onchange = async (e) => {
+                        const files = (e.target as HTMLInputElement).files;
+                        if (!files) return;
+                        const newSegments = [...batchSegments];
+                        for (const file of Array.from(files)) {
+                          try {
+                            const url = await uploadToStorage(file, 'generated-media');
+                            newSegments.push({ id: crypto.randomUUID(), text: '', audioUrl: url, audioName: file.name });
+                          } catch (err) {
+                            toast.error(`上传失败: ${file.name}`);
+                          }
+                        }
+                        setBatchSegments(newSegments);
+                        toast.success(`已上传 ${files.length} 个音频`);
+                      };
+                      input.click();
+                    }}
+                    disabled={isUploading}
+                    className="w-full"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {isUploading ? '上传中...' : '选择音频文件'}
+                  </Button>
+                  {batchSegments.length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      {batchSegments.map((seg, idx) => (
+                        <div key={seg.id} className="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/20">
+                          <span className="text-xs font-medium text-muted-foreground w-8 shrink-0">{idx + 1}.</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm truncate">{seg.audioName || '音频片段'}</p>
+                            {seg.text && <p className="text-xs text-muted-foreground truncate">{seg.text}</p>}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setBatchSegments((prev) => prev.filter((s) => s.id !== seg.id))}
+                          >
+                            <X className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(mode === 'gallery' || mode === 'text' || mode === 'image' || mode === 'remix') && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Mic className="h-4 w-4 text-primary" />
+                  <Label className="font-medium">语音合成文案</Label>
+                </div>
+                <div className="relative">
+                  <Textarea
+                    placeholder="输入需要合成的语音文本，生成的音频将用于视频配音（限5000字符）"
+                    value={audioText}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v.length <= 5000) setAudioText(v);
+                    }}
+                    rows={3}
+                    className="bg-background border-border resize-none focus-visible:ring-primary"
+                  />
+                  <span className={`absolute bottom-2 right-2 text-xs ${audioText.length > 4800 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {audioText.length}/5000
+                  </span>
+                </div>
+              </>
+            )}
             {/* Stats bar */}
             {audioText.trim() && (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -1755,7 +2251,13 @@ export default function CreatePage() {
             </div>
             <Button
               onClick={handleGenerate}
-              disabled={isGenerating || isUploading || (mode === 'text' && !hasContent) || (mode === 'gallery' && !audioText.trim())}
+              disabled={
+                isGenerating || isUploading ||
+                (mode === 'text' && !hasContent) ||
+                (mode === 'gallery' && !audioText.trim()) ||
+                (mode === 'audio' && !uploadedAudioUrl) ||
+                (mode === 'batch' && batchSegments.length === 0 && !batchInputText.trim())
+              }
               className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isGenerating ? (
@@ -1794,12 +2296,20 @@ export default function CreatePage() {
               <span className="text-muted-foreground">创作模式</span>
               <span className="font-medium">{MODES.find((m) => m.key === mode)?.label}</span>
             </div>
-            {mode === 'gallery' && (
+            {(mode === 'gallery' || mode === 'audio') && (
               <>
                 <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">语音文案</span>
-                  <span className="font-medium truncate max-w-[200px]">{audioText.trim().slice(0, 20)}{audioText.trim().length > 20 ? '...' : ''}</span>
+                  <span className="text-muted-foreground">{mode === 'audio' ? '音频文件' : '语音文案'}</span>
+                  <span className="font-medium truncate max-w-[200px]">
+                    {mode === 'audio' ? (uploadedAudioName || '已上传') : `${audioText.trim().slice(0, 20)}${audioText.trim().length > 20 ? '...' : ''}`}
+                  </span>
                 </div>
+                {mode === 'audio' && (
+                  <div className="flex justify-between py-1.5 border-b border-border">
+                    <span className="text-muted-foreground">识别文案</span>
+                    <span className="font-medium truncate max-w-[200px]">{audioText.trim().slice(0, 20) || '（未识别）'}{audioText.trim().length > 20 ? '...' : ''}</span>
+                  </div>
+                )}
                 <div className="flex justify-between py-1.5 border-b border-border">
                   <span className="text-muted-foreground">预估时长</span>
                   <span className="font-medium">{Math.max(1, Math.ceil(audioText.trim().length / 220 * 60 / speed))} 秒</span>
@@ -1830,7 +2340,21 @@ export default function CreatePage() {
                 </div>
               </>
             )}
-            {mode !== 'gallery' && (
+            {mode === 'batch' && (
+              <>
+                <div className="flex justify-between py-1.5 border-b border-border">
+                  <span className="text-muted-foreground">分段数量</span>
+                  <span className="font-medium">{Math.max(batchSegments.length, batchInputText.split('\n').filter((l) => l.trim()).length)} 段</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-border">
+                  <span className="text-muted-foreground">音色</span>
+                  <span className="font-medium truncate max-w-[200px]">
+                    {VOICE_CATEGORIES.flatMap((c) => c.voices).find((v) => v.value === voiceId)?.label || voiceId}
+                  </span>
+                </div>
+              </>
+            )}
+            {(mode === 'text' || mode === 'image' || mode === 'remix') && (
               <>
                 <div className="flex justify-between py-1.5 border-b border-border">
                   <span className="text-muted-foreground">视频描述</span>

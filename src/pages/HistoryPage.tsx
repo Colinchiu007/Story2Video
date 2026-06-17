@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Film, Image, Wand2, Clock, ArrowRight, Trash2, XCircle, Download, Play, Headphones, Search, RotateCw, X } from 'lucide-react';
+import { Film, Image, Wand2, Music, ListOrdered, Clock, ArrowRight, Trash2, XCircle, Download, Play, Headphones, Search, RotateCw, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,11 +43,15 @@ const MODE_ICONS = {
   image: Image,
   remix: Wand2,
   gallery: Image,
+  audio: Music,
+  batch: ListOrdered,
 };
 
 const MODE_LABELS: Record<string, string> = {
   text: '文生视频',
   image: '图生视频',
+  audio: '音频生成视频',
+  batch: '分段视频',
   remix: '视频Remix',
   gallery: '图片轮播视频',
 };

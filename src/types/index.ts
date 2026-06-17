@@ -46,7 +46,7 @@ export interface VideoTask {
   completed_at: string | null;
 }
 
-export type CreateMode = 'text' | 'image' | 'remix' | 'gallery';
+export type CreateMode = 'text' | 'image' | 'remix' | 'gallery' | 'audio' | 'batch';
 
 export interface GalleryImage {
   id: string;
