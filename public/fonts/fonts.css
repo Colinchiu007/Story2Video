@@ -1,0 +1,40 @@
+/* 新增字体定义 —— 优先使用本地已安装字体，其次尝试外部 CDN */
+/* 若外部 CDN 加载失败，则回退至 Noto Sans SC（已在 Google Fonts 加载） */
+
+/* 阿里巴巴普惠体 Alibaba PuHuiTi */
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: local('Alibaba PuHuiTi'), local('AlibabaPuHuiTi'), local('Alibaba PuHuiTi 2.0'),
+       url('/fonts/AlibabaPuHuiTi345-Regular.woff') format('woff');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 抖音美好体 Douyin Sans */
+@font-face {
+  font-family: 'Douyin Sans';
+  src: local('Douyin Sans'), local('DouyinSans'), local('DouyinSansBold'),
+       url('/fonts/DouyinSans-Bold.otf') format('opentype');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 未来荧黑 Glow Sans SC */
+@font-face {
+  font-family: 'Glow Sans SC';
+  src: local('Glow Sans SC'), local('GlowSansSC'), local('Glow Sans SC Normal');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* vivo Sans */
+@font-face {
+  font-family: 'vivo Sans';
+  src: local('vivo Sans'), local('vivoSans'), local('Vivo Sans');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

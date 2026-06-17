@@ -1,0 +1,1 @@
+ALTER TABLE public.video_tasks ADD COLUMN queue_position integer, ADD COLUMN queue_total integer, ADD COLUMN estimated_seconds_remaining integer;

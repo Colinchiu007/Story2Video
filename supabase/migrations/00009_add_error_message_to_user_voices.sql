@@ -1,0 +1,1 @@
+ALTER TABLE public.user_voices ADD COLUMN IF NOT EXISTS error_message text;

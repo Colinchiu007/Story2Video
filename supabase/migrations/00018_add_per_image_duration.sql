@@ -1,0 +1,1 @@
+ALTER TABLE video_tasks ADD COLUMN per_image_duration INT NOT NULL DEFAULT 6;
