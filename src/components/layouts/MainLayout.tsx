@@ -4,6 +4,7 @@ import { Film, Menu, Clock, Home, LogIn, LogOut, Settings, User } from 'lucide-r
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import ApiSettingsDialog from '@/components/ApiSettingsDialog';
 
 const navItems = [
@@ -112,6 +113,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     </Link>
                   );
                 })}
+                <div className="pt-4 border-t border-border">
+                  <ThemeToggle />
+                </div>
               </nav>
               <div className="p-4 border-t border-border space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -141,6 +145,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Film className="h-5 w-5 text-primary" />
           <span className="text-base font-semibold flex-1 min-w-0 truncate">视频创作工具</span>
           <div className="flex items-center gap-1 shrink-0">
+            <ThemeToggle />
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSettingsOpen(true)}>
               <Settings className="h-4 w-4" />
             </Button>

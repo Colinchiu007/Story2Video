@@ -3,7 +3,7 @@ import containerQuery from '@tailwindcss/container-queries';
 import intersect from 'tailwindcss-intersect';
 
 export default {
-    darkMode: ['class'],
+    darkMode: ['selector', '[data-theme="dark"]'],
     content: [
         './index.html',
         './pages/**/*.{ts,tsx}',

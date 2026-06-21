@@ -1,3 +1,7 @@
+# 欢迎使用你的秒哒应用代码包
+秒哒应用链接
+    URL:https://www.miaoda.cn/projects/app-bmyoogysfs3l
+
 # 规范驱动开发（Spec-Driven Development）指南
 
 本项目采用规范驱动开发流程，所有新功能在编码前必须先完成需求文档和设计文档。

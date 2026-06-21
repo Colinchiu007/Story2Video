@@ -4,6 +4,7 @@ import IntersectObserver from '@/components/common/IntersectObserver';
 import { Toaster } from '@/components/ui/sonner';
 import MainLayout from '@/components/layouts/MainLayout';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 import { routes } from './routes';
 
@@ -48,9 +49,11 @@ const InnerApp: React.FC = () => {
 const App: React.FC = () => {
   return (
     <Router>
-      <AuthProvider>
-        <InnerApp />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <InnerApp />
+        </AuthProvider>
+      </ThemeProvider>
     </Router>
   );
 };
