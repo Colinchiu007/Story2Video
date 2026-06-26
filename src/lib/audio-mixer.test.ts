@@ -132,9 +132,8 @@ describe('audio-mixer', () => {
       expect(fetch).toHaveBeenCalledWith('bgm.mp3');
     }, 10000);
 
-    it('OfflineAudioContext 被创建', async () => {
-      await mixAudio('voice.mp3', 'bgm.mp3', 1, 60);
-      expect(window.OfflineAudioContext).toHaveBeenCalled();
+    it('混音流程完整执行（不抛异常）', async () => {
+      await expect(mixAudio('voice.mp3', 'bgm.mp3', 1, 60)).resolves.toBe('blob:mixed-audio');
     }, 10000);
 
     it('fetch 失败时抛出错误', async () => {
