@@ -1,0 +1,6 @@
+# .clinerules — Story2Video 特定硬约束
+
+- rule: "视频任务严格串行执行，禁止并行"
+- rule: "暂存区（.temp_staging/）文件在构建时自动清理，不得提交到 Git"
+- rule: "前端组件必须实现 loading / error / empty 三态"
+- rule: "API 调用统一走封装的 service 层，组件不直接 fetch"

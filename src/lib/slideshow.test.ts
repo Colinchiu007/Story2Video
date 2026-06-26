@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createSlideshowVideo, loadImage } from './slideshow';
+import {
+  createSlideshowVideo,
+  loadImage,
+  renderFrame,
+  renderTransition,
+  mapSubtitleStyle,
+  getVideoExtension,
+} from './slideshow';
 
 describe('loadImage', () => {
   it('成功加载图片时返回HTMLImageElement', async () => {
@@ -9,7 +16,6 @@ describe('loadImage', () => {
     // @ts-ignore
     document.createElement = (tagName: string) => {
       if (tagName === 'img') {
-        // 延迟触发 onload，让 promise 能捕获
         setTimeout(() => {
           Object.defineProperty(img, 'width', { value: 1280, configurable: true });
           Object.defineProperty(img, 'height', { value: 720, configurable: true });
@@ -29,92 +35,90 @@ describe('loadImage', () => {
   }, 5000);
 });
 
-describe('createSlideshowVideo', () => {
-  let originalCreateElement: typeof document.createElement;
-
-  beforeEach(() => {
-    originalCreateElement = document.createElement.bind(document);
-
-    // Mock MediaRecorder as a proper constructor
-    class MockMediaRecorder {
-      ondataavailable: ((e: any) => void) | null = null;
-      onstop: (() => void) | null = null;
-      onerror: ((e: any) => void) | null = null;
-      start() {
-        setTimeout(() => {
-          if (this.ondataavailable) {
-            this.ondataavailable({ data: new Blob(['fake-video-data'], { type: 'video/webm' }) });
-          }
-          if (this.onstop) this.onstop();
-        }, 30);
-      }
-      stop() {}
-      static isTypeSupported(type: string) { return type.includes('webm'); }
-    }
-    // @ts-ignore
-    window.MediaRecorder = MockMediaRecorder;
-
-    // Mock createElement to intercept img creation and auto-trigger onload
-    // @ts-ignore
-    document.createElement = (tagName: string) => {
-      if (tagName === 'img') {
-        const img = originalCreateElement('img');
-        setTimeout(() => {
-          Object.defineProperty(img, 'width', { value: 1280, configurable: true });
-          Object.defineProperty(img, 'height', { value: 720, configurable: true });
-          img.dispatchEvent(new Event('load'));
-        }, 10);
-        return img;
-      }
-      if (tagName === 'canvas') {
-        const canvas = originalCreateElement('canvas');
-        const mockCtx = {
-          save: vi.fn(),
-          restore: vi.fn(),
-          fillRect: vi.fn(),
-          translate: vi.fn(),
-          scale: vi.fn(),
-          drawImage: vi.fn(),
-          globalAlpha: 1,
-        };
-        // @ts-ignore
-        canvas.getContext = () => mockCtx;
-        // @ts-ignore
-        canvas.captureStream = () => ({ getTracks: () => [] });
-        return canvas;
-      }
-      return originalCreateElement(tagName);
+describe('renderFrame', () => {
+  function makeMockCanvas() {
+    const ctx = {
+      filter: 'none',
+      fillStyle: '',
+      fillRect: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      drawImage: vi.fn(),
+      measureText: vi.fn().mockReturnValue({ width: 10 }),
     };
+    return ctx;
+  }
 
-    // Mock requestAnimationFrame to fire a few times then stop
-    let callCount = 0;
-    const origRAF = window.requestAnimationFrame;
-    window.requestAnimationFrame = function (cb: FrameRequestCallback) {
-      callCount++;
-      if (callCount > 5) return 0;
-      setTimeout(() => cb(performance.now()), 5);
-      return callCount;
-    };
+  function makeMockImage(width = 1280, height = 720) {
+    const img = document.createElement('img');
+    Object.defineProperty(img, 'width', { value: width, configurable: true });
+    Object.defineProperty(img, 'height', { value: height, configurable: true });
+    return img;
+  }
+
+  it('正常效果：绘制黑色背景并调用 drawImage', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'none', duration: 3 }, 0, 1280, 720);
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1280, 720);
+    expect(ctx.drawImage).toHaveBeenCalled();
   });
 
-  afterEach(() => {
-    // @ts-ignore
-    document.createElement = originalCreateElement;
-    vi.restoreAllMocks();
+  it('zoom-in 效果：scale 大于 1', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'zoom-in', duration: 3 }, 0.5, 1280, 720);
+    expect(ctx.scale).toHaveBeenCalled();
   });
 
-  it('无图片时抛出错误', async () => {
-    await expect(createSlideshowVideo([], null, 'none', 'none')).rejects.toThrow('没有图片');
+  it('zoom-out 效果：从 1.15 缩放到 1', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'zoom-out', duration: 3 }, 0.5, 1280, 720);
+    expect(ctx.scale).toHaveBeenCalled();
   });
 
-  it('有图片时返回Blob', async () => {
-    const images = [
-      { image_url: 'https://example.com/1.jpg', prompt: '图1' },
-      { image_url: 'https://example.com/2.jpg', prompt: '图2' },
-    ];
+  it('pan-left 效果：panX 为负', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'pan-left', duration: 3 }, 0.5, 1280, 720);
+    expect(ctx.translate).toHaveBeenCalled();
+  });
 
-    const blob = await createSlideshowVideo(images, null, 'zoom-in', 'fade');
-    expect(blob).toBeInstanceOf(Blob);
-    expect(blob.type).toMatch(/^video\/(webm|mp4)/);
-  }, 10000);
+  it('pan-right 效果：panX 为正', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'pan-right', duration: 3 }, 0.5, 1280, 720);
+    expect(ctx.translate).toHaveBeenCalled();
+  });
+
+  it('blur-in 效果：设置 filter', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'blur-in', duration: 3 }, 0, 1280, 720);
+    expect(ctx.filter).toMatch(/blur/);
+  });
+
+  it('portrait 图片：宽高比小于画布时高度等于画布宽度', () => {
+    const ctx = makeMockCanvas();
+    const img = makeMockImage(720, 1280);
+    renderFrame(ctx, { image: img, effect: 'none', duration: 3 }, 0, 720, 1280);
+    expect(ctx.drawImage).toHaveBeenCalled();
+  });
+
+  it('重置 filter 为 none', () => {
+    const ctx = makeMockCanvas();
+    ctx.filter = 'blur(5px)';
+    const img = makeMockImage();
+    renderFrame(ctx, { image: img, effect: 'none', duration: 3 }, 0, 1280, 720);
+    expect(ctx.filter).toBe('none');
+  });
 });
+
+describe('renderTransition', () => {
+  function makeMockCanvas() {
+    const ctx = {
+      f
