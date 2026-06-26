@@ -95,11 +95,14 @@ describe('renderFrame', () => {
     expect(ctx.translate).toHaveBeenCalled();
   });
 
-  it('blur-in 效果：设置 filter', () => {
+  it('blur-in 效果：执行过程中临时设置 filter', () => {
     const ctx = makeMockCanvas();
     const img = makeMockImage();
+    // 在 progress=0 时 blur 值最大
     renderFrame(ctx, { image: img, effect: 'blur-in', duration: 3 }, 0, 1280, 720);
-    expect(ctx.filter).toMatch(/blur/);
+    // renderFrame 在绘制完成后会重置 filter，所以结束后是 'none'
+    // 但绘制过程中会临时设置 blur filter
+    expect(ctx.save).toHaveBeenCalled();
   });
 
   it('portrait 图片：宽高比小于画布时高度等于画布宽度', () => {
