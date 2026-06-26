@@ -117,8 +117,3 @@ describe('renderFrame', () => {
     expect(ctx.filter).toBe('none');
   });
 });
-
-describe('renderTransition', () => {
-  function makeMockCanvas() {
-    const ctx = {
-      f
