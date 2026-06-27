@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import { generateImagePrompts } from '@/lib/history-prompt';
-import { startImageGenerationWithProfile, queryImageGenerationWithProfile } from '@/services/video';
+import { startImageGenerationWithProfile, queryImageGenerationWithProfile } from '@/services/image-generation';
 import type { CustomApiProfile } from '@/types';
 
 const STRATEGY_STORAGE_KEY = 'image_prompt_optimization_strategy';

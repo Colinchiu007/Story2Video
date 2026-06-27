@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { getVideoTask, listChildTasks, updateVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video';
+import { getVideoTask, listChildTasks, updateVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video-generation';
 import { getSubtitleStyleClasses } from '@/components/SubtitleSettings';
 import type { VideoTask } from '@/types';
 
