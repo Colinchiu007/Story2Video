@@ -2452,4 +2452,38 @@ export default function CreatePage() {
               </>
             )}
             <div className="flex justify-between py-1.5 border-b border-border">
-              <span className="text-muted-foreground">视频尺
+              <span className="text-muted-foreground">视频尺寸</span>
+              <span className="font-medium">{size}</span>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowConfirmDialog(false)}
+            >
+              取消
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={executeGenerate}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  生成中...
+                </span>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4" />
+                  确认生成
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
