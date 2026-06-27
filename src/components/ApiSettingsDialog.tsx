@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import type { ModelConfig, ModelProviderConfig, CustomApiProfile } from '@/types';
-import { invokeFunction } from '@/services/video';
+import { invokeFunction } from '@/services/api-config';
 import ApiHelpDialog from './ApiHelpDialog';
 import ImagePromptPreviewDialog from './ImagePromptPreviewDialog';
 

@@ -12,7 +12,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { cloneVoice, getUserVoices, deleteUserVoice } from '@/services/video';
+import { cloneVoice, getUserVoices, deleteUserVoice } from '@/services/voice-clone';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserVoice } from '@/types';

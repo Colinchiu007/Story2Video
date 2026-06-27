@@ -4,7 +4,7 @@ import {
   useKlingForImage,
   useKlingForVideo,
   useViduForImage,
-} from './video';
+} from './api-config';
 
 describe('Image Generation Provider', () => {
   let storage: Record<string, string> = {};

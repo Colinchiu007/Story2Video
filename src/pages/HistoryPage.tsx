@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { listVideoTasks, deleteVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video';
+import { listVideoTasks, deleteVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video-generation';
 import { supabase } from '@/db/supabase';
 import type { VideoTask } from '@/types';
 

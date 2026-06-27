@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { getVideoTask, queryVideoGeneration, updateVideoTask, listChildTasks } from '@/services/video';
+import { getVideoTask, queryVideoGeneration, updateVideoTask, listChildTasks } from '@/services/video-generation';
 import type { VideoTask } from '@/types';
 
 const POLL_INTERVAL = 8000;
