@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Type, Image, Wand2, Mic, Upload, Play, Pause, ArrowRight, Trash2, Volume2, SlidersHorizontal, User, Download, Save, RotateCcw, FileCheck, Film, Layers, Music, ListOrdered, GripVertical, Plus, X } from 'lucide-react';
+import { Type, Image, Wand2, Mic, Upload, Play, Pause, ArrowRight, Trash2, Volume2, SlidersHorizontal, User, Download, Save, RotateCcw, FileCheck, Film, Layers, Music, ListOrdered, GripVertical, Plus, X, LayoutTemplate } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -27,10 +27,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import VoiceCloneDialog from '@/components/VoiceCloneDialog';
 import BgmSettings from '@/components/BgmSettings';
 import SubtitleSettings from '@/components/SubtitleSettings';
+import VideoTemplatePicker, { TemplateSelectButton } from '@/components/VideoTemplatePicker';
+import EffectPicker, { EffectSettingsButton } from '@/components/EffectPicker';
+import { getTemplateById } from '@/lib/template-library';
 import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
 import { generateImagePrompts } from '@/lib/history-prompt';
 import { mixAudio, uploadMixedAudio } from '@/lib/audio-mixer';
 import type { CreateMode, UserVoice } from '@/types';
+import type { VideoTemplate } from '@/types/template';
 import type { BgmConfig } from '@/components/BgmSettings';
 import type { SubtitleConfig } from '@/components/SubtitleSettings';
 
@@ -250,6 +254,9 @@ export default function CreatePage() {
   const [generateBase, setGenerateBase] = useState(true);
   const [generateMerged, setGenerateMerged] = useState(true);
   const [perImageDuration, setPerImageDuration] = useState(6);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [effectOpen, setEffectOpen] = useState(false);
 
   // Draft save/restore
   const [draftRestored, setDraftRestored] = useState(false);
@@ -335,6 +342,7 @@ export default function CreatePage() {
     setUploadedAudioName('');
     setBatchSegments([]);
     setBatchInputText('');
+    setSelectedTemplateId(undefined);
     toast.success('草稿已清除');
   };
 
@@ -420,6 +428,33 @@ export default function CreatePage() {
       setDoubaoVoice({ id: cfgVoiceId, name: getDoubaoVoiceName() || '我的豆包音色' });
     }
   };
+
+  /** 应用模板预设参数到当前页面 */
+  const handleTemplateSelect = useCallback((template: VideoTemplate) => {
+    setSelectedTemplateId(template.id);
+    setImageEffect(template.imageEffect);
+    setTransitionEffect(template.transitionEffect);
+    if (template.perImageDuration) setPerImageDuration(template.perImageDuration);
+    if (template.size) setSize(template.size);
+    if (template.seconds) setSeconds(String(template.seconds));
+    if (template.bgm) {
+      setBgmConfig({
+        enabled: true,
+        url: template.bgm.url,
+        volume: template.bgm.volume,
+        name: template.bgm.name,
+      });
+    }
+    if (template.subtitleStyle) {
+      setSubtitleConfig({
+        enabled: template.subtitleStyle.enabled,
+        font: subtitleConfig.font,
+        size: template.subtitleStyle.size,
+        style: template.subtitleStyle.style,
+      });
+    }
+    toast.success(`已应用模板：${template.name}`);
+  }, [subtitleConfig.font]);
 
   const uploadToStorage = useCallback(async (file: File, bucket: string) => {
     setIsUploading(true);
@@ -2072,6 +2107,28 @@ export default function CreatePage() {
             )}
           </div>
 
+          {/* Template Selection */}
+          <div className="flex items-center justify-between rounded-sm border border-border p-3 bg-muted/20">
+            <div className="flex items-center gap-2">
+              <LayoutTemplate className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">
+                {selectedTemplateId
+                  ? getTemplateById(selectedTemplateId)?.name ?? '已选模板'
+                  : '视频模板'}
+              </span>
+            </div>
+            <TemplateSelectButton
+              onClick={() => setTemplateOpen(true)}
+              hasSelection={!!selectedTemplateId}
+            />
+            <VideoTemplatePicker
+              open={templateOpen}
+              onOpenChange={setTemplateOpen}
+              selectedId={selectedTemplateId}
+              onSelect={handleTemplateSelect}
+            />
+          </div>
+
           {/* BGM Settings - always visible */}
           <BgmSettings
             config={bgmConfig}
@@ -2154,32 +2211,49 @@ export default function CreatePage() {
             </div>
             {mode === 'gallery' ? (
               <>
-                <div className="space-y-2">
-                  <Label>图片动态效果</Label>
-                  <Select value={imageEffect} onValueChange={setImageEffect}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {IMAGE_EFFECTS.map((e) => (
-                        <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 space-y-2">
+                    <Label>图片动态效果</Label>
+                    <Select value={imageEffect} onValueChange={setImageEffect}>
+                      <SelectTrigger className="bg-background border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {IMAGE_EFFECTS.map((e) => (
+                          <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Label>图片切换特效</Label>
+                    <Select value={transitionEffect} onValueChange={setTransitionEffect}>
+                      <SelectTrigger className="bg-background border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TRANSITION_EFFECTS.map((e) => (
+                          <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end pt-1">
+                    <EffectSettingsButton
+                      onClick={() => setEffectOpen(true)}
+                      imageEffect={imageEffect}
+                      transitionEffect={transitionEffect}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>图片切换特效</Label>
-                  <Select value={transitionEffect} onValueChange={setTransitionEffect}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TRANSITION_EFFECTS.map((e) => (
-                        <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <EffectPicker
+                  open={effectOpen}
+                  onOpenChange={setEffectOpen}
+                  imageEffect={imageEffect}
+                  transitionEffect={transitionEffect}
+                  onImageEffectChange={setImageEffect}
+                  onTransitionEffectChange={setTransitionEffect}
+                />
                 <div className="space-y-2">
                   <Label>每张图片展示时长</Label>
                   <Select value={String(perImageDuration)} onValueChange={(v) => setPerImageDuration(Number(v))}>
@@ -2378,68 +2452,4 @@ export default function CreatePage() {
               </>
             )}
             <div className="flex justify-between py-1.5 border-b border-border">
-              <span className="text-muted-foreground">视频尺寸</span>
-              <span className="font-medium">{size}</span>
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setShowConfirmDialog(false)}>
-              返回修改
-            </Button>
-            <Button className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" onClick={executeGenerate}>
-              确认提交
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Gallery Progress Dialog */}
-      <Dialog open={progressOpen} onOpenChange={setProgressOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-          <DialogHeader>
-            <DialogTitle>正在生成图片轮播视频</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            {progressSteps.map((step, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <div className="mt-0.5 shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-xs font-semibold"
-                  style={{
-                    backgroundColor: step.status === 'completed' ? 'hsl(var(--primary))' : step.status === 'failed' ? 'hsl(var(--destructive))' : step.status === 'active' ? 'hsl(var(--primary))' : 'hsl(var(--muted))',
-                    color: step.status === 'pending' ? 'hsl(var(--muted-foreground))' : 'hsl(var(--primary-foreground))',
-                    opacity: step.status === 'active' ? 1 : step.status === 'pending' ? 0.6 : 1,
-                  }}
-                >
-                  {step.status === 'completed' ? '✓' : step.status === 'failed' ? '!' : i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-medium ${step.status === 'active' ? 'text-primary' : step.status === 'failed' ? 'text-destructive' : step.status === 'pending' ? 'text-muted-foreground' : 'text-foreground'}`}>
-                    {step.label}
-                    {step.status === 'active' && <span className="ml-2 inline-block h-3 w-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
-                  </div>
-                  {step.detail && (
-                    <p className="text-xs text-muted-foreground mt-0.5 break-words">{step.detail}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {progressError && (
-              <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
-                {progressError}
-              </div>
-            )}
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setProgressOpen(false)} disabled={isGenerating}>
-                {isGenerating ? '生成中...' : '关闭'}
-              </Button>
-              {progressError && (
-                <Button className="flex-1" onClick={() => { setProgressOpen(false); navigate('/history'); }}>
-                  查看历史记录
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+              <span className="text-muted-foreground">视频尺

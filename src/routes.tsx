@@ -5,6 +5,7 @@ import ResultPage from './pages/ResultPage';
 import HistoryPage from './pages/HistoryPage';
 import GalleryPage from './pages/GalleryPage';
 import SegmentManagerPage from './pages/SegmentManagerPage';
+import ProfilePage from './pages/ProfilePage';
 import type { ReactNode } from 'react';
 
 export interface RouteConfig {
@@ -58,5 +59,10 @@ export const routes: RouteConfig[] = [
     path: '/segments/:id',
     element: <SegmentManagerPage />,
     public: true,
+  },
+  {
+    name: '个人主页',
+    path: '/profile',
+    element: <ProfilePage />,
   },
 ];

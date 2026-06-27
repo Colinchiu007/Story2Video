@@ -1,15 +1,17 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Film, Menu, Clock, Home, LogIn, LogOut, Settings, User } from 'lucide-react';
+import { Film, Menu, Clock, Home, LogIn, LogOut, Settings, Settings2, User } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import ApiSettingsDialog from '@/components/ApiSettingsDialog';
+import WatermarkPicker from "@/components/WatermarkPicker";
 
 const navItems = [
   { path: '/', label: '创作', icon: Home },
   { path: '/history', label: '历史', icon: Clock },
+  { path: '/profile', label: '我的', icon: User },
 ];
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -18,6 +20,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [watermarkOpen, setWatermarkOpen] = React.useState(false);
 
   const handleLogout = async () => {
     await signOut();
@@ -64,6 +67,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 设置
               </Button>
               {user ? (
+              <Button variant="ghost" size="sm" className="h-auto py-1 px-2 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent" onClick={() => setWatermarkOpen(true)}>
+                <Settings2 className="h-3.5 w-3.5 mr-1" />
+                水印
+              </Button>
                 <Button variant="ghost" size="sm" className="h-auto py-1 px-2 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent" onClick={handleLogout}>
                   <LogOut className="h-3.5 w-3.5 mr-1" />
                   退出
@@ -177,6 +184,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         onSave={() => {
           window.dispatchEvent(new CustomEvent('api-settings-saved'));
         }}
+      />
+      <WatermarkPicker
+        open={watermarkOpen}
+        onOpenChange={setWatermarkOpen}
       />
     </div>
   );

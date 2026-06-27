@@ -125,3 +125,22 @@ export interface UserSettings {
   created_at: string;
   updated_at: string;
 }
+
+/** 水印位置 */
+export type WatermarkPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+
+/** 水印配置 */
+export interface WatermarkConfig {
+  /** 是否启用 */
+  enabled: boolean;
+  /** 水印文字 */
+  text: string;
+  /** 水印位置 */
+  position: WatermarkPosition;
+  /** 字号 (px) */
+  fontSize: number;
+  /** 透明度 (0-1) */
+  opacity: number;
+  /** 文字颜色 */
+  color: string;
+}

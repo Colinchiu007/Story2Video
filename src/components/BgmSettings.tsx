@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
+import { getAllBgmTracks, saveCustomBgmTracks, type BgmTrack } from '@/lib/bgm-library';
 
 export interface BgmConfig {
   enabled: boolean;
@@ -29,39 +30,25 @@ interface BgmSettingsProps {
   disabled?: boolean;
 }
 
-const DEFAULT_BUILT_IN: BgmLibraryItem[] = [
-  { id: 'bgm1', name: '轻快旋律', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', isBuiltIn: true },
-  { id: 'bgm2', name: '温馨舒缓', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', isBuiltIn: true },
-  { id: 'bgm3', name: '活力电子', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', isBuiltIn: true },
-  { id: 'bgm4', name: '优雅钢琴', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', isBuiltIn: true },
-  { id: 'bgm5', name: '自然清风', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', isBuiltIn: true },
-  { id: 'bgm6', name: '节奏明快', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3', isBuiltIn: true },
-  { id: 'bgm7', name: '梦幻氛围', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3', isBuiltIn: true },
-  { id: 'bgm8', name: '治愈吉他', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3', isBuiltIn: true },
-  { id: 'bgm9', name: '轻快打击', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3', isBuiltIn: true },
-  { id: 'bgm10', name: '温柔弦乐', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3', isBuiltIn: true },
-];
+// Built-in BGM library - 由 src/lib/bgm-library.ts 管理（生产 Audio CDN）
+// 如需更改 BGM 源，修改 src/lib/bgm-library.ts 中的 DEFAULT_BGMS
+const getDefaultBuiltIn = (): BgmLibraryItem[] =>
+  getAllBgmTracks().map((t) => ({ ...t, isBuiltIn: true }));
 
-const BG_LIB_KEY = 'bgm_library_config';
+// 自定义 BGM 通过 bgm-library 模块存取
 const MAX_UPLOAD_MB = 15;
 
 function getStoredLibrary(): BgmLibraryItem[] {
-  try {
-    const raw = localStorage.getItem(BG_LIB_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as BgmLibraryItem[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // Reset built-in tracks if any have empty URLs (legacy data)
-        const hasEmptyBuiltIn = parsed.some((item) => item.isBuiltIn && !item.url);
-        if (!hasEmptyBuiltIn) return parsed;
-      }
-    }
-  } catch { /* ignore */ }
-  return JSON.parse(JSON.stringify(DEFAULT_BUILT_IN));
+  // Load from bgm-library module (built-in + custom from localStorage)
+  const all = getAllBgmTracks();
+  // Reset built-in tracks if any have empty URLs (legacy data)
+  const hasEmptyBuiltIn = all.some((item) => item.isBuiltIn && !item.url);
+  if (!hasEmptyBuiltIn) return all.map((t) => ({ ...t }));
+  return getDefaultBuiltIn();
 }
 
 function saveLibrary(lib: BgmLibraryItem[]) {
-  localStorage.setItem(BG_LIB_KEY, JSON.stringify(lib));
+  saveCustomBgmTracks(lib.filter((t) => !t.isBuiltIn));
 }
 
 function truncateName(name: string, maxLen = 8): string {

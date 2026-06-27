@@ -16,6 +16,7 @@ import { startImageGeneration, queryImageGeneration } from '@/services/image-gen
 import { createSlideshowVideo, mapSubtitleStyle, getVideoExtension } from '@/lib/slideshow';
 import { buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
 import type { GalleryImage, VideoTask } from '@/types';
+import ShareButton from '@/components/ShareButton';
 import type { SubtitleSegment } from '@/lib/slideshow';
 
 const REGENERATING_STORAGE_KEY = 'gallery_regenerating_tasks';
@@ -882,6 +883,12 @@ export default function GalleryPage() {
                 <Button variant="outline" onClick={() => navigate('/history')}>
                   查看历史
                 </Button>
+                {task?.merged_video_url && (
+                  <ShareButton
+                    url={task.merged_video_url}
+                    title={task.prompt}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -918,6 +925,12 @@ export default function GalleryPage() {
                     <Download className="h-4 w-4 mr-1" />
                     下载音频
                   </Button>
+                )}
+                {task?.video_url && (
+                  <ShareButton
+                    url={task.video_url}
+                    title={task.prompt}
+                  />
                 )}
               </div>
             </div>

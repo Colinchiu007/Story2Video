@@ -1,3 +1,5 @@
+import type { WatermarkConfig } from "@/types";
+import { drawWatermark } from "./watermark";
 export interface RenderFrame {
   image: HTMLImageElement;
   effect: string;
@@ -502,6 +504,7 @@ export async function createSlideshowVideo(
     bgmVolume?: number; // 1-10
     subtitles?: SubtitleSegment[];
     subtitleStyle?: SubtitleStyle;
+    watermarkConfig?: WatermarkConfig;
   },
 ): Promise<Blob> {
   if (images.length === 0) throw new Error('没有图片');
@@ -731,6 +734,10 @@ export async function createSlideshowVideo(
         drawSubtitle(ctx, elapsed, subtitleLayouts, subStyle, width);
       }
 
+      // Draw watermark
+      if (options?.watermarkConfig) {
+        drawWatermark(ctx, options.watermarkConfig, width, height);
+      }
       rafId = requestAnimationFrame(renderLoop);
     }
 

@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Download, ArrowLeft, RefreshCw, Film, AlertCircle, Clapperboard, Edit3, Save, X, Wand2 } from 'lucide-react';
+import { Download, ArrowLeft, RefreshCw, Film, AlertCircle, Clapperboard, Edit3, Save, X, Wand2, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { getVideoTask, listChildTasks, updateVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video-generation';
 import { getSubtitleStyleClasses } from '@/components/SubtitleSettings';
+import ShareButton from '@/components/ShareButton';
+import VideoClipEditor from '@/components/VideoClipEditor';
 import type { VideoTask } from '@/types';
 
 export default function ResultPage() {
@@ -19,6 +21,8 @@ export default function ResultPage() {
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [clipVideoUrl, setClipVideoUrl] = useState<string | null>(null);
+  const [clipEditorOpen, setClipEditorOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -365,10 +369,41 @@ export default function ResultPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 重新创作
               </Button>
+              {task?.video_url && (
+                <ShareButton
+                  url={task.video_url}
+                  title={task.prompt}
+                  className="h-11"
+                  variant="outline"
+                />
+              )}
+              {task?.video_url && !isMulti && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setClipVideoUrl(task?.video_url || null);
+                    setClipEditorOpen(true);
+                  }}
+                  className="flex-1 h-11"
+                >
+                  <Scissors className="h-4 w-4 mr-2" />
+                  剪辑
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Video Clip Editor */}
+      {clipVideoUrl && (
+        <VideoClipEditor
+          videoUrl={clipVideoUrl}
+          videoTitle={task?.prompt || ''}
+          open={clipEditorOpen}
+          onOpenChange={setClipEditorOpen}
+        />
+      )}
     </div>
   );
 }
