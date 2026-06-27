@@ -339,9 +339,12 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
   const [doubaoVoiceName, setDoubaoVoiceName] = useState('');
 
   const [modelConfig, setModelConfig] = useState<ModelConfig>({ ...DEFAULT_MODEL_CONFIG });
-  const [activeTab, setActiveTab] = useState<'llm' | 'tts' | 'video' | 'image'>('llm');
+  const [activeTab, setActiveTab] = useState<'llm' | 'tts' | 'video' | 'image' | 'publish'>('llm');
 
   const [showDoubaoKey, setShowDoubaoKey] = useState(false);
+  const [orchestratorUrl, setOrchestratorUrl] = useState('');
+  const [orchestratorApiKey, setOrchestratorApiKey] = useState('');
+  const [showOrchestratorKey, setShowOrchestratorKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -390,6 +393,8 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
     setJimengApiKey(storedCfg.jimengApiKey ?? '');
     setDoubaoVoiceId(storedCfg.doubaoVoiceId ?? '');
     setDoubaoVoiceName(storedCfg.doubaoVoiceName ?? '');
+    setOrchestratorUrl(localStorage.getItem('orchestrator_url') || '');
+    setOrchestratorApiKey(localStorage.getItem('orchestrator_api_key') || '');
     setModelConfig({
       llm: { ...DEFAULT_MODEL_CONFIG.llm, ...(storedCfg.modelConfig?.llm || {}), source: (storedCfg.modelConfig?.llm?.source as 'builtin' | 'custom') ?? 'builtin', provider: storedCfg.modelConfig?.llm?.provider ?? 'openai' },
       tts: { ...DEFAULT_MODEL_CONFIG.tts, ...(storedCfg.modelConfig?.tts || {}), source: (storedCfg.modelConfig?.tts?.source as 'builtin' | 'custom') ?? 'builtin', provider: storedCfg.modelConfig?.tts?.provider ?? 'doubao' },
@@ -546,6 +551,10 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
       modelConfig: effectiveModelConfig,
     };
 
+    // Save orchestrator settings to dedicated localStorage keys
+    localStorage.setItem('orchestrator_url', orchestratorUrl);
+    localStorage.setItem('orchestrator_api_key', orchestratorApiKey);
+
     setIsSaving(true);
     try {
       localStorage.setItem('api_config', JSON.stringify(config));
@@ -697,18 +706,64 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
         </DialogHeader>
 
         <div className="space-y-5 pt-2">
-          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as typeof activeTab); setEditingProfile(null); }} className="w-full">
-            <TabsList className="grid grid-cols-4 w-full">
+          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as 'llm' | 'tts' | 'video' | 'image' | 'publish'); setEditingProfile(null); }} className="w-full">
+            <TabsList className="grid grid-cols-5 w-full">
               <TabsTrigger value="llm">推理模型</TabsTrigger>
               <TabsTrigger value="tts">语音模型</TabsTrigger>
               <TabsTrigger value="video">视频模型</TabsTrigger>
               <TabsTrigger value="image">图片模型</TabsTrigger>
+              <TabsTrigger value="publish">发布设置</TabsTrigger>
             </TabsList>
           </Tabs>
 
           {activeTab === 'llm' && renderProviderOptions('llm')}
           {activeTab === 'tts' && renderProviderOptions('tts')}
           {activeTab === 'video' && renderProviderOptions('video')}
+          {activeTab === 'publish' && (
+            <div className="space-y-4 border border-border rounded-sm p-4 bg-muted/20">
+              <span className="text-sm font-medium">Orchestrator 发布服务</span>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                配置视频发布到 B站/抖音 等平台的中间服务。不配置则使用平台内置地址。
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="orchestrator-url">服务地址 <span className="text-muted-foreground font-normal">（可选）</span></Label>
+                <Input
+                  id="orchestrator-url"
+                  placeholder="例如：https://your-api.com"
+                  value={orchestratorUrl}
+                  onChange={(e) => setOrchestratorUrl(e.target.value)}
+                  className="bg-background border-border"
+                />
+                <p className="text-xs text-muted-foreground">
+                  留空则使用 <code className="text-primary bg-primary/10 px-1 rounded">/api</code>（同域代理）
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="orchestrator-api-key">API 密钥 <span className="text-muted-foreground font-normal">（可选）</span></Label>
+                <div className="relative">
+                  <Input
+                    id="orchestrator-api-key"
+                    type={showOrchestratorKey ? 'text' : 'password'}
+                    placeholder="PO_API_KEY 值"
+                    value={orchestratorApiKey}
+                    onChange={(e) => setOrchestratorApiKey(e.target.value)}
+                    className="bg-background border-border pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowOrchestratorKey(!showOrchestratorKey)}
+                  >
+                    {showOrchestratorKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  与 orchestrator 的 <code className="text-primary bg-primary/10 px-1 rounded">PO_API_KEY</code> 保持一致
+                </p>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'image' && (
             <div className="space-y-3">
               {renderProviderOptions('image')}

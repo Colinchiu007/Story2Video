@@ -226,3 +226,56 @@ export async function queryVideoGeneration(videoId: string): Promise<{
     error?: string | null;
   };
 }
+
+
+/** Publish a video from Story2Video to external platforms (B站 etc.)
+ *  via the orchestrator's publish-video endpoint.
+ *
+ *  Auth: Send orchestrator_api_key in localStorage as X-API-Key header,
+ *  or omit if the orchestrator is on the same origin with JWT session.
+ *
+ *  Returns the task_id for status polling.
+ */
+export async function publishVideo(params: {
+  videoUrl: string;
+  title: string;
+  platform?: string;
+  desc?: string;
+  tags?: string[];
+  coverUrl?: string;
+}): Promise<{ taskId: string; status: string }> {
+  const orchestratorUrl =
+    localStorage.getItem('orchestrator_url') ||
+    import.meta.env.VITE_ORCHESTRATOR_URL ||
+    '/api';
+
+  const apiKey = localStorage.getItem('orchestrator_api_key') || '';
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+
+  const res = await fetch(`${orchestratorUrl}/jobs/publish-video`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      video_url: params.videoUrl,
+      title: params.title,
+      platform: params.platform ?? 'bilibili',
+      desc: params.desc ?? '',
+      tags: params.tags ?? [],
+      cover_url: params.coverUrl ?? null,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err ? `发布失败 (${res.status}): ${err}` : `发布失败 (${res.status})`);
+  }
+
+  const data = await res.json();
+  return { taskId: data.task_id, status: data.status };
+}

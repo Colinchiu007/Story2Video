@@ -688,6 +688,44 @@ AI视频创作平台
 - 静态图片效果（none）可搭配所有转场效果
 - 推荐搭配以标签形式在转场卡片中标注「推荐搭配」
 
+### 7.15 B站视频发布功能
+
+#### 7.15.1 功能描述
+用户可在结果页一键将生成的视频发布到 B站（bilibili）。发布流程通过 orchestrator 的后台任务异步执行：先下载视频 → 上传到 B站 → 创建投稿。
+
+#### 7.15.2 触发条件
+- 视频已生成成功（有 video_url）
+- orchestrator 已配置 B站 SESSDATA（通过 ProviderRouter 管理）
+- 用户已配置 orchestrator 连接（API Key 或同域部署）
+
+#### 7.15.3 界面入口
+- 单分视频结果页底部操作栏，位于「分享」按钮之前
+- 多片段模式：仅在有至少一个子视频完成时显示
+- 按钮文案三态：「发布到B站」/「发布中...（禁用+旋转动画）」/「已发布（绿色勾）」
+
+#### 7.15.4 交互流程
+1. 用户点击「发布到B站」按钮
+2. 前端调用 `publishVideo()` 函数 → POST `/api/jobs/publish-video`
+3. orchestrator 创建 video_publish 任务（status: pending）
+4. BackgroundTask 异步执行：下载视频 → B站 pre-upload → 分片上传 → create archive
+5. 前端显示发布中状态（loading），防止重复提交
+6. 发布成功/失败通过 toast 通知用户
+
+#### 7.15.5 错误处理
+- 网络错误：toast 提示错误信息
+- orchestrator 未配置 B站 SESSDATA：返回 400 错误，前端展示失败原因
+- 视频不存在/URL 过期：发布任务失败，jobs 表记录 error
+
+#### 7.15.6 配置说明
+- 环境变量 `VITE_ORCHESTRATOR_URL` 或 localStorage `orchestrator_url` 指定 orchestrator 地址
+- localStorage `orchestrator_api_key` 保存 API Key（对应 orchestrator 的 `PO_API_KEY`）
+- 开发环境默认使用 `/api`（生产同域）或 `http://localhost:8000`（开发跨域）
+
+#### 7.15.7 依赖
+- backend: orchestrator `POST /api/jobs/publish-video`（feature gate: video_publish）
+- backend: orchestrator `services/bilibili_publisher.py` — B站上传完整流程
+- backend: auth via JWT Bearer token 或 X-API-Key header
+
 ## 8. 本期不实现功能
 
 

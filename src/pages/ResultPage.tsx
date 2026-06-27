@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Download, ArrowLeft, RefreshCw, Film, AlertCircle, Clapperboard, Edit3, Save, X, Wand2, Scissors } from 'lucide-react';
+import { Download, ArrowLeft, RefreshCw, Film, AlertCircle, Clapperboard, Edit3, Save, X, Wand2, Scissors, Upload, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { getVideoTask, listChildTasks, updateVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video-generation';
+import { getVideoTask, listChildTasks, updateVideoTask, startTextToVideo, startImageToVideo, startRemixVideo, publishVideo } from '@/services/video-generation';
 import { getSubtitleStyleClasses } from '@/components/SubtitleSettings';
 import ShareButton from '@/components/ShareButton';
 import VideoClipEditor from '@/components/VideoClipEditor';
@@ -23,6 +23,10 @@ export default function ResultPage() {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [clipVideoUrl, setClipVideoUrl] = useState<string | null>(null);
   const [clipEditorOpen, setClipEditorOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState('');
+  const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
+  const [publishPlatform, setPublishPlatform] = useState<'bilibili' | 'douyin'>('bilibili');
 
   useEffect(() => {
     if (!id) return;
@@ -48,6 +52,33 @@ export default function ResultPage() {
       const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
       setError(msg);
       setLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!task?.video_url) return;
+    setPublishing(true);
+    setPublishError('');
+    setPublishSuccess(null);
+    try {
+      const videoUrl = task.video_url;
+      const coverUrl = task.input_reference_url || undefined;
+      const result = await publishVideo({
+        videoUrl,
+        title: task.prompt || '视频',
+        platform: publishPlatform,
+        desc: task.prompt || '',
+        coverUrl,
+      });
+      const platformLabel = publishPlatform === 'bilibili' ? 'B站' : '抖音';
+      setPublishSuccess(`已发布到 ${platformLabel}！任务ID: ${result.taskId}`);
+      toast.success(`视频已提交到 ${platformLabel} 发布队列`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '发布失败';
+      setPublishError(msg);
+      toast.error(msg);
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -369,6 +400,37 @@ export default function ResultPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 重新创作
               </Button>
+              {task?.video_url && (
+                <div className="flex gap-2 flex-1">
+                  <select
+                    value={publishPlatform}
+                    onChange={(e) => setPublishPlatform(e.target.value as 'bilibili' | 'douyin')}
+                    className="h-11 px-2 text-sm rounded-md border border-input bg-background shrink-0"
+                    disabled={publishing || !!publishSuccess}
+                  >
+                    <option value="bilibili">B站</option>
+                    <option value="douyin">抖音</option>
+                  </select>
+                  <Button
+                    variant="outline"
+                    onClick={handlePublish}
+                    disabled={publishing}
+                    className="flex-1 h-11"
+                  >
+                    {publishing ? (
+                      <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
+                    ) : publishSuccess ? (
+                      <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    {publishing ? '发布中...' : publishSuccess ? '已发布' : `发布到${publishPlatform === 'bilibili' ? 'B站' : '抖音'}`}
+                  </Button>
+                </div>
+              )}
+              {publishError && (
+                <p className="text-xs text-destructive px-1">{publishError}</p>
+              )}
               {task?.video_url && (
                 <ShareButton
                   url={task.video_url}
