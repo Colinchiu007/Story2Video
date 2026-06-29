@@ -48,6 +48,22 @@ import { useTTSPreview } from '@/hooks/useTTSPreview';
 
 import { useAutoSaveDraft, useRestoreDraft, useClearDraft } from '@/hooks/useCreateDraft';
 import type { CreateDraftState, CreateDraftSetters } from '@/hooks/useCreateDraft';
+// ── JSX 子组件 ──────────────────────────────────────────────────
+import HeaderSection from '@/components/HeaderSection';
+import PromptInput from '@/components/PromptInput';
+import ImageUploadSection from '@/components/ImageUploadSection';
+import RemixVideoUpload from '@/components/RemixVideoUpload';
+import AudioModeUpload from '@/components/AudioModeUpload';
+import BatchModeInput from '@/components/BatchModeInput';
+import TTSTextarea from '@/components/TTSTextarea';
+import VoiceSection from '@/components/VoiceSection';
+import AudioPreviewButtons from '@/components/AudioPreviewButtons';
+import TemplateSection from '@/components/TemplateSection';
+import VersionSelection from '@/components/VersionSelection';
+import SettingsGrid from '@/components/SettingsGrid';
+import SubmitSection from '@/components/SubmitSection';
+import ConfirmDialog from '@/components/ConfirmDialog';
+
 
 
 
@@ -1059,35 +1075,15 @@ export default function CreatePage() {
 
   const currentMode = MODES.find((m) => m.key === mode)!;
 
+
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto animate-fade-in">
-      <div className="relative rounded-sm overflow-hidden mb-8 aspect-[16/6] md:aspect-[16/5]">
-        <img
-          src="https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_84235796-312b-463e-b768-99b46e02e834.jpg"
-          alt="AI 视频创作"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" />
-        <div className="absolute inset-0 flex flex-col justify-center p-6 md:p-8">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-balance mb-2">视频创作</h1>
-              <p className="text-muted-foreground text-sm md:text-base max-w-md text-pretty">选择创作模式，输入描述或上传素材，AI 将为您生成视频</p>
-            </div>
-            {(prompt || audioText) && (
-              <button
-                type="button"
-                onClick={clearDraft}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                title="清除当前草稿"
-              >
-                <RotateCcw className="h-3 w-3" />
-                清除草稿
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <HeaderSection
+        mode={mode}
+        prompt={prompt}
+        audioText={audioText}
+        clearDraft={clearDraft}
+      />
 
       {/* Mode Selection */}
       <Tabs value={mode} onValueChange={(v) => setMode(v as CreateMode)} className="mb-6">
@@ -1114,572 +1110,116 @@ export default function CreatePage() {
           <CardDescription className="text-pretty">{currentMode.desc}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Prompt - hidden for gallery mode */}
-          {mode !== 'gallery' && (
-            <div className="space-y-2">
-              <Label>
-                {mode === 'remix' ? '编辑说明' : '视频描述（可选）'}
-                {mode === 'remix' && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <Textarea
-                placeholder={
-                  mode === 'text'
-                    ? '此处不填时，以语音文本内容生成对应画面的视频；有语音的同时，如有自定义视频内容要求，可在此填写，但尽量与语音文案相关'
-                    : mode === 'image'
-                      ? '描述视频中期望的画面动态效果（可选）'
-                      : '描述希望做出的修改，如：将场景变为夜晚，增加霓虹灯光'
-                }
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={4}
-                className="bg-background border-border resize-none focus-visible:ring-primary"
-              />
-            </div>
-          )}
+          <PromptInput
+            mode={mode}
+            prompt={prompt}
+            setPrompt={setPrompt}
+          />
 
-          {/* Image Upload for Image mode */}
           {mode === 'image' && (
-            <div className="space-y-2">
-              <Label>参考图片 <span className="text-destructive">*</span></Label>
-              {uploadedImageUrl ? (
-                <div className="relative rounded-sm overflow-hidden border border-border">
-                  <img src={uploadedImageUrl} alt="参考图" className="w-full aspect-video object-cover" />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="absolute top-2 right-2 bg-black/60 text-white hover:bg-black/80 border border-white/30"
-                    onClick={() => { setUploadedImageUrl(''); if (imageInputRef.current) imageInputRef.current.value = ''; }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <div
-                  className={`border-2 border-dashed rounded-sm p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors bg-muted/30 ${
-                    dragOverImage ? 'border-primary bg-primary/5' : 'border-border hover:border-primary'
-                  }`}
-                  onClick={() => imageInputRef.current?.click()}
-                  onDragOver={(e) => { e.preventDefault(); setDragOverImage(true); }}
-                  onDragLeave={() => setDragOverImage(false)}
-                  onDrop={handleImageDrop}
-                >
-                  <Upload className={`h-8 w-8 transition-colors ${dragOverImage ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <span className={`text-sm transition-colors ${dragOverImage ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                    {dragOverImage ? '松开即可上传图片' : '点击或拖拽上传参考图片'}
-                  </span>
-                  <span className="text-xs text-muted-foreground">支持 JPEG/PNG/WebP，≤ 10MB</span>
-                </div>
-              )}
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={handleImageUpload}
-              />
-            </div>
+            <ImageUploadSection
+              uploadedImageUrl={uploadedImageUrl}
+              setUploadedImageUrl={setUploadedImageUrl}
+              isUploading={isUploading}
+              dragOverImage={dragOverImage}
+              setDragOverImage={setDragOverImage}
+              imageInputRef={imageInputRef}
+              handleImageUpload={handleImageUpload}
+              handleImageDrop={handleImageDrop}
+            />
           )}
 
-          {/* Remix Video Upload */}
           {mode === 'remix' && (
-            <div className="space-y-2">
-              <Label>上传源视频 <span className="text-destructive">*</span></Label>
-              {remixVideoUrl ? (
-                <div className="rounded-sm border border-border bg-muted/30 p-3 space-y-2">
-                  <video src={remixVideoUrl} className="w-full aspect-video rounded-sm" controls muted />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground truncate flex-1 mr-2">{remixVideoFileName}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { setRemixVideoUrl(''); setRemixVideoFileName(''); }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1" />
-                      移除
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className={`rounded-sm border-2 border-dashed p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-muted/30 ${
-                    dragOverVideo ? 'border-primary bg-primary/5' : 'border-border hover:border-primary'
-                  }`}
-                  onClick={() => videoInputRef.current?.click()}
-                  onDragOver={(e) => { e.preventDefault(); setDragOverVideo(true); }}
-                  onDragLeave={() => setDragOverVideo(false)}
-                  onDrop={handleVideoDrop}
-                >
-                  <Upload className={`h-8 w-8 transition-colors ${dragOverVideo ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <span className={`text-sm transition-colors ${dragOverVideo ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                    {dragOverVideo ? '松开即可上传视频' : '点击或拖拽上传视频文件'}
-                  </span>
-                  <span className="text-xs text-muted-foreground">支持 MP4、MOV、WebM，最大 50MB</span>
-                </div>
-              )}
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                onChange={handleVideoUpload}
-              />
-              <p className="text-xs text-muted-foreground">上传已有视频，AI将基于此视频进行Remix编辑</p>
-            </div>
+            <RemixVideoUpload
+              remixVideoUrl={remixVideoUrl}
+              setRemixVideoUrl={setRemixVideoUrl}
+              remixVideoFileName={remixVideoFileName}
+              setRemixVideoFileName={setRemixVideoFileName}
+              isUploading={isUploading}
+              dragOverVideo={dragOverVideo}
+              setDragOverVideo={setDragOverVideo}
+              videoInputRef={videoInputRef}
+              handleVideoUpload={handleVideoUpload}
+              handleVideoDrop={handleVideoDrop}
+            />
           )}
 
           {/* Audio / Text Input Section - mode dependent */}
           <div className="border-t border-border pt-6 space-y-4">
             {mode === 'audio' && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Music className="h-4 w-4 text-primary" />
-                  <Label className="font-medium">音频文件</Label>
-                </div>
-                {!uploadedAudioUrl ? (
-                  <div
-                    className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
-                    onDragOver={(e) => { e.preventDefault(); }}
-                    onDrop={handleAudioDrop}
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,.wav,.m4a,.mp3';
-                      input.onchange = (e) => handleAudioUpload(e as unknown as React.ChangeEvent<HTMLInputElement>);
-                      input.click();
-                    }}
-                  >
-                    <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">点击或拖拽上传音频文件</p>
-                    <p className="text-xs text-muted-foreground mt-1">支持 WAV、M4A、MP3 格式，最大 20MB</p>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 p-3 border border-border rounded-lg bg-muted/20">
-                    <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                      <Music className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{uploadedAudioName || '已上传音频'}</p>
-                      <p className="text-xs text-muted-foreground">{uploadedAudioUrl ? '上传成功' : ''}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setUploadedAudioUrl('');
-                        setUploadedAudioName('');
-                        setUploadedAudioFile(null);
-                        setAudioText('');
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
-                )}
-                {uploadedAudioUrl && !audioText && (
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      if (!uploadedAudioFile) {
-                        toast.error('未找到音频文件');
-                        return;
-                      }
-                      setIsRecognizingAudio(true);
-                      try {
-                        const ext = uploadedAudioFile.name.slice(uploadedAudioFile.name.lastIndexOf('.')).toLowerCase();
-                        const format: 'wav' | 'm4a' = ext === '.m4a' ? 'm4a' : 'wav';
-                        const text = await recognizeAudio(uploadedAudioFile, format);
-                        setAudioText(text);
-                        toast.success('语音识别完成');
-                      } catch (err) {
-                        const msg = err instanceof Error ? err.message : '识别失败';
-                        toast.error(`语音识别失败: ${msg}`);
-                      } finally {
-                        setIsRecognizingAudio(false);
-                      }
-                    }}
-                    disabled={isRecognizingAudio}
-                    className="w-full"
-                  >
-                    {isRecognizingAudio ? (
-                      <span className="flex items-center gap-2">
-                        <span className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                        识别中...
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <Mic className="h-4 w-4" />
-                        识别音频内容
-                      </span>
-                    )}
-                  </Button>
-                )}
-                {audioText && (
-                  <div className="relative">
-                    <Textarea
-                      placeholder="识别结果，可编辑修正"
-                      value={audioText}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v.length <= 5000) setAudioText(v);
-                      }}
-                      rows={4}
-                      className="bg-background border-border resize-none focus-visible:ring-primary"
-                    />
-                    <span className={`absolute bottom-2 right-2 text-xs ${audioText.length > 4800 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                      {audioText.length}/5000
-                    </span>
-                  </div>
-                )}
-              </div>
+              <AudioModeUpload
+                uploadedAudioUrl={uploadedAudioUrl}
+                uploadedAudioName={uploadedAudioName}
+                uploadedAudioFile={uploadedAudioFile}
+                setUploadedAudioUrl={setUploadedAudioUrl}
+                setUploadedAudioName={setUploadedAudioName}
+                setUploadedAudioFile={setUploadedAudioFile}
+                audioText={audioText}
+                setAudioText={setAudioText}
+                isRecognizingAudio={isRecognizingAudio}
+                setIsRecognizingAudio={setIsRecognizingAudio}
+                recognizeAudio={recognizeAudio}
+                handleAudioUpload={handleAudioUpload}
+              />
             )}
 
             {mode === 'batch' && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <ListOrdered className="h-4 w-4 text-primary" />
-                  <Label className="font-medium">分段文案</Label>
-                </div>
-                <div className="relative">
-                  <Textarea
-                    placeholder="每行输入一段文案，每段将生成一个独立的视频片段&#10;示例：&#10;第一段文案内容&#10;第二段文案内容&#10;第三段文案内容"
-                    value={batchInputText}
-                    onChange={(e) => setBatchInputText(e.target.value)}
-                    rows={6}
-                    className="bg-background border-border resize-none focus-visible:ring-primary"
-                  />
-                </div>
-                {batchInputText.trim() && (
-                  <div className="text-xs text-muted-foreground">
-                    共 <span className="font-medium text-foreground">{batchInputText.split('\n').filter((l) => l.trim()).length}</span> 个分段
-                  </div>
-                )}
-                <div className="flex items-center gap-2 pt-2">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs text-muted-foreground">或</span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm">批量上传音频（每个音频对应一个分段）</Label>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,.wav,.m4a,.mp3';
-                      input.multiple = true;
-                      input.onchange = async (e) => {
-                        const files = (e.target as HTMLInputElement).files;
-                        if (!files) return;
-                        const newSegments = [...batchSegments];
-                        for (const file of Array.from(files)) {
-                          try {
-                            const url = await uploadToStorage(file, 'generated-media');
-                            newSegments.push({ id: crypto.randomUUID(), text: '', audioUrl: url, audioName: file.name });
-                          } catch (err) {
-                            toast.error(`上传失败: ${file.name}`);
-                          }
-                        }
-                        setBatchSegments(newSegments);
-                        toast.success(`已上传 ${files.length} 个音频`);
-                      };
-                      input.click();
-                    }}
-                    disabled={isUploading}
-                    className="w-full"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    {isUploading ? '上传中...' : '选择音频文件'}
-                  </Button>
-                  {batchSegments.length > 0 && (
-                    <div className="space-y-2 mt-2">
-                      {batchSegments.map((seg, idx) => (
-                        <div key={seg.id} className="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/20">
-                          <span className="text-xs font-medium text-muted-foreground w-8 shrink-0">{idx + 1}.</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm truncate">{seg.audioName || '音频片段'}</p>
-                            {seg.text && <p className="text-xs text-muted-foreground truncate">{seg.text}</p>}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setBatchSegments((prev) => prev.filter((s) => s.id !== seg.id))}
-                          >
-                            <X className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <BatchModeInput
+                batchSegments={batchSegments}
+                setBatchSegments={setBatchSegments}
+                batchInputText={batchInputText}
+                setBatchInputText={setBatchInputText}
+                isUploading={isUploading}
+                uploadToStorage={uploadToStorage}
+              />
             )}
 
             {(mode === 'gallery' || mode === 'text' || mode === 'image' || mode === 'remix') && (
-              <>
-                <div className="flex items-center gap-2">
-                  <Mic className="h-4 w-4 text-primary" />
-                  <Label className="font-medium">语音合成文案</Label>
-                </div>
-                <div className="relative">
-                  <Textarea
-                    placeholder="输入需要合成的语音文本，生成的音频将用于视频配音（限5000字符）"
-                    value={audioText}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v.length <= 5000) setAudioText(v);
-                    }}
-                    rows={3}
-                    className="bg-background border-border resize-none focus-visible:ring-primary"
-                  />
-                  <span className={`absolute bottom-2 right-2 text-xs ${audioText.length > 4800 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                    {audioText.length}/5000
-                  </span>
-                </div>
-              </>
-            )}
-            {/* Stats bar */}
-            {audioText.trim() && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                <span className="text-muted-foreground">
-                  字数 <span className="font-medium text-foreground tabular-nums">{audioText.trim().length}</span>
-                </span>
-                <span className="text-muted-foreground">
-                  预估时长 <span className="font-medium text-foreground tabular-nums">{Math.max(1, Math.ceil(audioText.trim().length / 220 * 60 / speed))} 秒</span>
-                </span>
-                <span className="text-muted-foreground">
-                  语速 <span className="font-medium text-foreground tabular-nums">{speed.toFixed(1)}x</span>
-                </span>
-                {mode === 'gallery' && (
-                  <span className="text-muted-foreground">
-                    预计生成 <span className="font-medium text-foreground tabular-nums">{Math.max(1, Math.ceil(Math.max(1, Math.ceil(audioText.trim().length / 220 * 60 / speed)) / 6))} 张</span> 图片
-                  </span>
-                )}
-              </div>
-            )}
-            {/* Voice Selection */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>音色选择</Label>
-                <VoiceCloneDialog
-                  onSelectVoice={handleSelectClonedVoice}
-                  trigger={
-                    <button
-                      type="button"
-                      className="inline-flex items-center text-sm text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <User className="h-3.5 w-3.5 mr-1" />
-                      克隆音色
-                    </button>
-                  }
-                />
-              </div>
-              <Select
-                value={voiceId}
-                onValueChange={(id) => {
-                  setVoiceId(id);
-                  saveLastVoice(id);
-                }}
-              >
-                <SelectTrigger className="w-full bg-background border-border">
-                  <SelectValue placeholder="选择音色" />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* Configured Doubao voice (first) */}
-                  {doubaoVoice && (
-                    <>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-primary uppercase tracking-wider">
-                        我的音色
-                      </div>
-                      <SelectItem key={doubaoVoice.id} value={doubaoVoice.id}>
-                        {doubaoVoice.name}
-                      </SelectItem>
-                    </>
-                  )}
-                  {/* User cloned voices from this app */}
-                  {userVoices.length > 0 && (
-                    <>
-                      {!doubaoVoice && (
-                        <div className="px-2 py-1.5 text-xs font-semibold text-primary uppercase tracking-wider">
-                          我的音色
-                        </div>
-                      )}
-                      {userVoices.map((v) => (
-                        <SelectItem key={v.voice_id ?? v.id} value={v.voice_id ?? v.id}>
-                          {v.name}
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                  {VOICE_CATEGORIES.map((cat) => (
-                    <React.Fragment key={cat.label}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        {cat.label}
-                      </div>
-                      {cat.voices.map((v) => (
-                        <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Voice Settings Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowVoiceSettings(!showVoiceSettings)}
-              className={`w-full flex items-center justify-between gap-2 text-sm px-3 py-2 rounded-sm border transition-colors ${
-                showVoiceSettings
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-primary'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4" />
-                语音参数调节（语速、音量、音调、情绪）
-              </span>
-              <span className={`text-xs transition-transform duration-200 ${showVoiceSettings ? 'rotate-180' : ''}`}>▼</span>
-            </button>
-
-            {/* Voice Settings Panel */}
-            {showVoiceSettings && (
-              <div className="space-y-5 p-4 border border-border rounded-sm bg-muted/20">
-                {/* Speed */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <Label>语速</Label>
-                    <span className="text-muted-foreground tabular-nums">{speed.toFixed(1)}x</span>
-                  </div>
-                  <Slider
-                    value={[speed]}
-                    min={0.5}
-                    max={2.0}
-                    step={0.1}
-                    onValueChange={(v) => setSpeed(v[0])}
-                  />
-                </div>
-                {/* Volume */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <Label>音量</Label>
-                    <span className="text-muted-foreground tabular-nums">{vol.toFixed(1)}x</span>
-                  </div>
-                  <Slider
-                    value={[vol]}
-                    min={0.1}
-                    max={2.0}
-                    step={0.1}
-                    onValueChange={(v) => setVol(v[0])}
-                  />
-                </div>
-                {/* Pitch */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <Label>音调</Label>
-                    <span className="text-muted-foreground tabular-nums">{pitch > 0 ? `+${pitch}` : pitch}</span>
-                  </div>
-                  <Slider
-                    value={[pitch]}
-                    min={-10}
-                    max={10}
-                    step={1}
-                    onValueChange={(v) => setPitch(v[0])}
-                  />
-                </div>
-                {/* Emotion */}
-                <div className="space-y-2">
-                  <Label>情绪</Label>
-                  <Select value={emotion} onValueChange={setEmotion}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue placeholder="选择情绪" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EMOTION_OPTIONS.map((e) => (
-                        <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <TTSTextarea
+                audioText={audioText}
+                setAudioText={setAudioText}
+                speed={speed}
+                mode={mode}
+              />
             )}
 
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handlePreviewAudio}
-                disabled={isPreviewingAudio || !audioText.trim()}
-                className="shrink-0"
-              >
-                {isPreviewingAudio ? (
-                  <Volume2 className="h-4 w-4 animate-pulse" />
-                ) : isPlayingPreview ? (
-                  <Pause className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                <span className="ml-2">
-                  {isPreviewingAudio ? '生成中...' : isPlayingPreview ? '暂停' : '生成&试听'}
-                </span>
-              </Button>
-              {audioPreview && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    if (!audioPreview) return;
-                    try {
-                      const response = await fetch(audioPreview);
-                      const blob = await response.blob();
-                      const objUrl = window.URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = objUrl;
-                      a.download = `tts-preview-${Date.now()}.mp3`;
-                      document.body.appendChild(a);
-                      a.click();
-                      window.URL.revokeObjectURL(objUrl);
-                      document.body.removeChild(a);
-                      toast.success('下载已开始');
-                    } catch {
-                      toast.error('下载失败，请直接右键音频保存');
-                    }
-                  }}
-                  className="shrink-0"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  下载音频
-                </Button>
-              )}
-            </div>
-            {audioPreview && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Volume2 className="h-4 w-4" />
-                <span>音频时长 {audioDuration.toFixed(1)} 秒</span>
-                {isPlayingPreview && <span className="text-primary animate-pulse">播放中...</span>}
-              </div>
-            )}
-          </div>
-
-          {/* Template Selection */}
-          <div className="flex items-center justify-between rounded-sm border border-border p-3 bg-muted/20">
-            <div className="flex items-center gap-2">
-              <LayoutTemplate className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">
-                {selectedTemplateId
-                  ? getTemplateById(selectedTemplateId)?.name ?? '已选模板'
-                  : '视频模板'}
-              </span>
-            </div>
-            <TemplateSelectButton
-              onClick={() => setTemplateOpen(true)}
-              hasSelection={!!selectedTemplateId}
+            <VoiceSection
+              voiceId={voiceId}
+              setVoiceId={setVoiceId}
+              saveLastVoice={saveLastVoice}
+              doubaoVoice={doubaoVoice}
+              userVoices={userVoices}
+              handleSelectClonedVoice={handleSelectClonedVoice}
+              speed={speed}
+              setSpeed={setSpeed}
+              vol={vol}
+              setVol={setVol}
+              pitch={pitch}
+              setPitch={setPitch}
+              emotion={emotion}
+              setEmotion={setEmotion}
+              showVoiceSettings={showVoiceSettings}
+              setShowVoiceSettings={setShowVoiceSettings}
             />
-            <VideoTemplatePicker
-              open={templateOpen}
-              onOpenChange={setTemplateOpen}
-              selectedId={selectedTemplateId}
-              onSelect={handleTemplateSelect}
+
+            <AudioPreviewButtons
+              audioText={audioText}
+              audioPreview={audioPreview}
+              isPreviewingAudio={isPreviewingAudio}
+              isPlayingPreview={isPlayingPreview}
+              audioDuration={audioDuration}
+              handlePreviewAudio={handlePreviewAudio}
+              setIsPlayingPreview={setIsPlayingPreview}
+              setAudioPreview={setAudioPreview}
             />
           </div>
+
+          <TemplateSection
+            selectedTemplateId={selectedTemplateId}
+            templateOpen={templateOpen}
+            setTemplateOpen={setTemplateOpen}
+            handleTemplateSelect={handleTemplateSelect}
+          />
 
           {/* BGM Settings - always visible */}
           <BgmSettings
@@ -1688,42 +1228,14 @@ export default function CreatePage() {
             disabled={isGenerating}
           />
 
-          {/* Version selection */}
-          <div className="space-y-3 border border-border rounded-sm p-4 bg-muted/20">
-            <Label className="font-medium flex items-center gap-1">
-              <Layers className="h-4 w-4 text-primary" />
-              视频版本
-            </Label>
-            <div className="flex flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="generate-base"
-                  checked={generateBase}
-                  onCheckedChange={(v) => setGenerateBase(v === true)}
-                  disabled={isGenerating}
-                />
-                <Label htmlFor="generate-base" className="text-sm cursor-pointer">
-                  基础版（语音+画面）
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="generate-merged"
-                  checked={generateMerged}
-                  onCheckedChange={(v) => setGenerateMerged(v === true)}
-                  disabled={isGenerating}
-                />
-                <Label htmlFor="generate-merged" className="text-sm cursor-pointer">
-                  整合版（语音+背景音乐+字幕）
-                </Label>
-              </div>
-            </div>
-            {!generateBase && !generateMerged && (
-              <p className="text-xs text-destructive">请至少选择一个视频版本</p>
-            )}
-          </div>
+          <VersionSelection
+            generateBase={generateBase}
+            setGenerateBase={setGenerateBase}
+            generateMerged={generateMerged}
+            setGenerateMerged={setGenerateMerged}
+            isGenerating={isGenerating}
+          />
 
-          {/* Subtitle Settings */}
           {hasAudioText && (
             <SubtitleSettings
               config={subtitleConfig}
@@ -1733,309 +1245,61 @@ export default function CreatePage() {
             />
           )}
 
-          {/* Settings */}
-          <div className="border-t border-border pt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>分辨率</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { value: '720x1280', label: '720P', desc: '竖屏', ratio: 'aspect-[9/16]' },
-                  { value: '1080x1920', label: '1080P', desc: '竖屏', ratio: 'aspect-[9/16]' },
-                  { value: '1280x720', label: '720P', desc: '横屏', ratio: 'aspect-[16/9]' },
-                  { value: '1920x1080', label: '1080P', desc: '横屏', ratio: 'aspect-[16/9]' },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSize(opt.value)}
-                    className={`flex flex-col items-center gap-1.5 p-2 rounded-sm border transition-colors ${
-                      size === opt.value
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border bg-background hover:border-primary/50'
-                    }`}
-                  >
-                    <div className={`w-8 ${opt.ratio} rounded-[2px] border-2 ${size === opt.value ? 'border-primary' : 'border-muted-foreground/30'}`} />
-                    <span className={`text-xs font-medium ${size === opt.value ? 'text-primary' : 'text-foreground'}`}>{opt.label}</span>
-                    <span className="text-[10px] text-muted-foreground">{opt.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {mode === 'gallery' ? (
-              <>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-2">
-                    <Label>图片动态效果</Label>
-                    <Select value={imageEffect} onValueChange={setImageEffect}>
-                      <SelectTrigger className="bg-background border-border">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {IMAGE_EFFECTS.map((e) => (
-                          <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <Label>图片切换特效</Label>
-                    <Select value={transitionEffect} onValueChange={setTransitionEffect}>
-                      <SelectTrigger className="bg-background border-border">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TRANSITION_EFFECTS.map((e) => (
-                          <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-end pt-1">
-                    <EffectSettingsButton
-                      onClick={() => setEffectOpen(true)}
-                      imageEffect={imageEffect}
-                      transitionEffect={transitionEffect}
-                    />
-                  </div>
-                </div>
-                <EffectPicker
-                  open={effectOpen}
-                  onOpenChange={setEffectOpen}
-                  imageEffect={imageEffect}
-                  transitionEffect={transitionEffect}
-                  onImageEffectChange={setImageEffect}
-                  onTransitionEffectChange={setTransitionEffect}
-                />
-                <div className="space-y-2">
-                  <Label>每张图片展示时长</Label>
-                  <Select value={String(perImageDuration)} onValueChange={(v) => setPerImageDuration(Number(v))}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="3">3 秒</SelectItem>
-                      <SelectItem value="6">6 秒</SelectItem>
-                      <SelectItem value="8">8 秒</SelectItem>
-                      <SelectItem value="10">10 秒</SelectItem>
-                      <SelectItem value="15">15 秒</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">根据语音时长自动计算图片数量</p>
-                </div>
-              </>
-            ) : (
-              <div className="space-y-2">
-                <Label>时长</Label>
-                <Select value={seconds} onValueChange={setSeconds}>
-                  <SelectTrigger className="bg-background border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="4">4 秒</SelectItem>
-                    <SelectItem value="8">8 秒</SelectItem>
-                    <SelectItem value="12">12 秒</SelectItem>
-                    <SelectItem value="30">30 秒</SelectItem>
-                    <SelectItem value="60">60 秒</SelectItem>
-                    <SelectItem value="audio">根据语音时长</SelectItem>
-                  </SelectContent>
-                </Select>
-                {isAudioDurationMode && (
-                  <p className="text-xs text-primary flex items-center gap-1">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-                    先生成语音，再根据语音时长生成对应时长的视频
-                  </p>
-                )}
-                {!isAudioDurationMode && Number(seconds) > 12 && (
-                  <p className="text-xs text-primary flex items-center gap-1">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-                    长视频将拆分为 {Math.ceil(Number(seconds) / 12)} 个 12 秒片段并行生成
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+          <SettingsGrid
+            size={size}
+            setSize={setSize}
+            mode={mode}
+            imageEffect={imageEffect}
+            setImageEffect={setImageEffect}
+            transitionEffect={transitionEffect}
+            setTransitionEffect={setTransitionEffect}
+            perImageDuration={perImageDuration}
+            setPerImageDuration={setPerImageDuration}
+            seconds={seconds}
+            setSeconds={setSeconds}
+            isAudioDurationMode={isAudioDurationMode}
+            effectOpen={effectOpen}
+            setEffectOpen={setEffectOpen}
+          />
 
-          {/* Submit */}
-          <div className="pt-4 space-y-2">
-            <div className="text-xs text-muted-foreground space-y-1">
-              {useJimengForVideo() ? (
-                <p className="flex items-center gap-1.5">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-success" />
-                  当前使用即梦 API 生成视频
-                </p>
-              ) : useViduForVideo() ? (
-                <p className="flex items-center gap-1.5">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-success" />
-                  当前使用 Vidu API 生成视频
-                </p>
-              ) : (
-                <>
-                  <p className="flex items-center gap-1.5">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-                    当前使用系统内置大模型生成视频
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    系统内置额度有限，如遇额度不足请在「设置」中配置自定义 API Key 或即梦 API Key
-                  </p>
-                </>
-              )}
-            </div>
-            <Button
-              onClick={handleGenerate}
-              disabled={
-                isGenerating || isUploading ||
-                (mode === 'text' && !hasContent) ||
-                (mode === 'gallery' && !audioText.trim()) ||
-                (mode === 'audio' && !uploadedAudioUrl) ||
-                (mode === 'batch' && batchSegments.length === 0 && !batchInputText.trim())
-              }
-              className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              {isGenerating ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  提交中...
-                </span>
-              ) : isUploading ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  上传中...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Wand2 className="h-5 w-5" />
-                  立即创作
-                  <ArrowRight className="h-5 w-5" />
-                </span>
-              )}
-            </Button>
-          </div>
+          <SubmitSection
+            isGenerating={isGenerating}
+            isUploading={isUploading}
+            handleGenerate={handleGenerate}
+            mode={mode}
+            hasContent={hasContent}
+            audioText={audioText}
+            uploadedAudioUrl={uploadedAudioUrl}
+            batchSegments={batchSegments}
+            batchInputText={batchInputText}
+            useJimengForVideo={useJimengForVideo}
+            useViduForVideo={useViduForVideo}
+          />
         </CardContent>
       </Card>
 
-      {/* Confirm Dialog before generation */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileCheck className="h-5 w-5 text-primary" />
-              确认创作配置
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-2 text-sm">
-            <div className="flex justify-between py-1.5 border-b border-border">
-              <span className="text-muted-foreground">创作模式</span>
-              <span className="font-medium">{MODES.find((m) => m.key === mode)?.label}</span>
-            </div>
-            {(mode === 'gallery' || mode === 'audio') && (
-              <>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">{mode === 'audio' ? '音频文件' : '语音文案'}</span>
-                  <span className="font-medium truncate max-w-[200px]">
-                    {mode === 'audio' ? (uploadedAudioName || '已上传') : `${audioText.trim().slice(0, 20)}${audioText.trim().length > 20 ? '...' : ''}`}
-                  </span>
-                </div>
-                {mode === 'audio' && (
-                  <div className="flex justify-between py-1.5 border-b border-border">
-                    <span className="text-muted-foreground">识别文案</span>
-                    <span className="font-medium truncate max-w-[200px]">{audioText.trim().slice(0, 20) || '（未识别）'}{audioText.trim().length > 20 ? '...' : ''}</span>
-                  </div>
-                )}
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">预估时长</span>
-                  <span className="font-medium">{Math.max(1, Math.ceil(audioText.trim().length / 220 * 60 / speed))} 秒</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">图片数量</span>
-                  <span className="font-medium">{Math.max(1, Math.ceil(Math.max(1, Math.ceil(audioText.trim().length / 220 * 60 / speed)) / 6))} 张</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">音色</span>
-                  <span className="font-medium truncate max-w-[200px]">
-                    {VOICE_CATEGORIES.flatMap((c) => c.voices).find((v) => v.value === voiceId)?.label || voiceId}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">背景音乐</span>
-                  <span className="font-medium">{bgmConfig.enabled ? (bgmConfig.name || '已启用') : '无'}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">字幕</span>
-                  <span className="font-medium">{subtitleConfig.enabled ? '已启用' : '无'}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">生成版本</span>
-                  <span className="font-medium">
-                    {generateBase && generateMerged ? '基础版 + 整合版' : generateBase ? '仅基础版' : generateMerged ? '仅整合版' : '未选择'}
-                  </span>
-                </div>
-              </>
-            )}
-            {mode === 'batch' && (
-              <>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">分段数量</span>
-                  <span className="font-medium">{Math.max(batchSegments.length, batchInputText.split('\n').filter((l) => l.trim()).length)} 段</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">音色</span>
-                  <span className="font-medium truncate max-w-[200px]">
-                    {VOICE_CATEGORIES.flatMap((c) => c.voices).find((v) => v.value === voiceId)?.label || voiceId}
-                  </span>
-                </div>
-              </>
-            )}
-            {(mode === 'text' || mode === 'image' || mode === 'remix') && (
-              <>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">视频描述</span>
-                  <span className="font-medium truncate max-w-[200px]">{prompt.trim().slice(0, 20) || '（未填写）'}{prompt.trim().length > 20 ? '...' : ''}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-border">
-                  <span className="text-muted-foreground">时长</span>
-                  <span className="font-medium">{isAudioDurationMode ? '按音频时长' : `${seconds} 秒`}</span>
-                </div>
-                {audioText.trim() && (
-                  <div className="flex justify-between py-1.5 border-b border-border">
-                    <span className="text-muted-foreground">语音合成</span>
-                    <span className="font-medium">已启用</span>
-                  </div>
-                )}
-              </>
-            )}
-            <div className="flex justify-between py-1.5 border-b border-border">
-              <span className="text-muted-foreground">视频尺寸</span>
-              <span className="font-medium">{size}</span>
-            </div>
-          </div>
-          <div className="flex gap-3 pt-4">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setShowConfirmDialog(false)}
-            >
-              取消
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={executeGenerate}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  生成中...
-                </span>
-              ) : (
-                <>
-                  <Wand2 className="h-4 w-4" />
-                  确认生成
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        showConfirmDialog={showConfirmDialog}
+        setShowConfirmDialog={setShowConfirmDialog}
+        executeGenerate={executeGenerate}
+        isGenerating={isGenerating}
+        mode={mode}
+        audioText={audioText}
+        uploadedAudioName={uploadedAudioName}
+        uploadedAudioUrl={uploadedAudioUrl}
+        voiceId={voiceId}
+        speed={speed}
+        bgmConfig={bgmConfig}
+        subtitleConfig={subtitleConfig}
+        generateBase={generateBase}
+        generateMerged={generateMerged}
+        size={size}
+        prompt={prompt}
+        seconds={seconds}
+        isAudioDurationMode={isAudioDurationMode}
+        batchSegments={batchSegments}
+        batchInputText={batchInputText}
+      />
     </div>
   );
 }
