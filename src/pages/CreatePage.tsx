@@ -38,98 +38,22 @@ import type { VideoTemplate } from '@/types/template';
 import type { BgmConfig } from '@/components/BgmSettings';
 import type { SubtitleConfig } from '@/components/SubtitleSettings';
 
-const MODES: { key: CreateMode; label: string; icon: React.ElementType; desc: string }[] = [
-  { key: 'gallery', label: '图片轮播视频', icon: Image, desc: '生成口播语音和多张图片，组合为轮播视频' },
-  { key: 'audio', label: '音频生成视频', icon: Music, desc: '上传音频文件，识别内容后生成图片并合成视频' },
-  { key: 'batch', label: '分段视频', icon: ListOrdered, desc: '输入多段文案或上传多个音频，生成多个视频片段' },
-  { key: 'text', label: '文生视频', icon: Type, desc: '输入文本描述，AI 自动生成视频' },
-  { key: 'image', label: '图生视频', icon: Image, desc: '上传参考图片，基于图片生成视频' },
-  { key: 'remix', label: '视频Remix', icon: Wand2, desc: '上传已有视频，进行局部编辑' },
-];
+// ── 从常量文件导入 ──────────────────────────────────────────────────
+import { MODES } from '@/constants/modes';
+import { VOICE_CATEGORIES, EMOTION_OPTIONS } from '@/constants/voices';
+import { IMAGE_EFFECTS, TRANSITION_EFFECTS } from '@/constants/effects';
+import { useGenerationProgress } from '@/hooks/useGenerationProgress';
+import { useFileUploads } from '@/hooks/useFileUploads';
+import { useTTSPreview } from '@/hooks/useTTSPreview';
 
-const IMAGE_EFFECTS = [
-  { value: 'none', label: '无效果' },
-  { value: 'zoom-in', label: '慢慢放大' },
-  { value: 'zoom-out', label: '慢慢缩小' },
-  { value: 'pan-left', label: '向左平移' },
-  { value: 'pan-right', label: '向右平移' },
-  { value: 'pan-up', label: '向上平移' },
-  { value: 'pan-down', label: '向下平移' },
-  { value: 'zoom-pan', label: '放大+平移' },
-  { value: 'rotate', label: '缓慢旋转' },
-  { value: 'blur-in', label: '模糊渐入' },
-];
+import { useAutoSaveDraft, useRestoreDraft, useClearDraft } from '@/hooks/useCreateDraft';
+import type { CreateDraftState, CreateDraftSetters } from '@/hooks/useCreateDraft';
 
-const TRANSITION_EFFECTS = [
-  { value: 'none', label: '直接切换' },
-  { value: 'fade', label: '渐隐渐显' },
-  { value: 'slide-left', label: '左滑' },
-  { value: 'slide-right', label: '右滑' },
-  { value: 'slide-up', label: '上滑' },
-  { value: 'slide-down', label: '下滑' },
-];
 
-// Doubao built-in voices (Volcengine seed-tts)
-const VOICE_CATEGORIES = [
-  {
-    label: '中文男声',
-    voices: [
-      { value: 'zh_male_m191_uranus_bigtts', label: '云舟 2.0（磁性）' },
-      { value: 'zh_male_taocheng_uranus_bigtts', label: '小天 2.0（年轻）' },
-      { value: 'zh_male_wenrouxiaoge_mars_bigtts', label: '温柔小哥' },
-      { value: 'zh_male_aojiaobazong_emo_v2_mars_bigtts', label: '傲娇霸总' },
-      { value: 'zh_male_lubanqihao_mars_bigtts', label: '鲁班七号' },
-      { value: 'zh_male_tangseng_mars_bigtts', label: '唐僧' },
-      { value: 'zh_male_zhuangzhou_mars_bigtts', label: '庄周' },
-    ],
-  },
-  {
-    label: '中文女声',
-    voices: [
-      { value: 'zh_female_vv_uranus_bigtts', label: 'Vivi 2.0（活泼）' },
-      { value: 'zh_female_qingxinnvsheng_uranus_bigtts', label: '清新女声 2.0' },
-      { value: 'zh_female_vv_mars_bigtts', label: 'Vivi（活泼）' },
-      { value: 'zh_female_qinqienvsheng_moon_bigtts', label: '亲切女声' },
-      { value: 'zh_female_gaolengyujie_emo_v2_mars_bigtts', label: '高冷御姐' },
-      { value: 'zh_female_yangmi_mars_bigtts', label: '林潇' },
-    ],
-  },
-  {
-    label: '英文',
-    voices: [
-      { value: 'en_male_tim_uranus_bigtts', label: 'Tim' },
-      { value: 'en_female_dacey_uranus_bigtts', label: 'Dacey' },
-    ],
-  },
-];
 
-const EMOTION_OPTIONS = [
-  { value: 'default', label: '默认' },
-  { value: 'happy', label: '开心' },
-  { value: 'sad', label: '悲伤' },
-  { value: 'angry', label: '生气' },
-  { value: 'surprised', label: '惊讶' },
-  { value: 'fearful', label: '恐惧' },
-  { value: 'hate', label: '厌恶' },
-  { value: 'excited', label: '激动' },
-  { value: 'coldness', label: '冷漠' },
-  { value: 'neutral', label: '中性' },
-  { value: 'depressed', label: '沮丧' },
-  { value: 'lovey-dovey', label: '撒娇' },
-  { value: 'shy', label: '害羞' },
-  { value: 'comfort', label: '安慰鼓励' },
-  { value: 'tension', label: '咆哮/焦急' },
-  { value: 'tender', label: '温柔' },
-  { value: 'storytelling', label: '讲故事' },
-  { value: 'radio', label: '情感电台' },
-  { value: 'magnetic', label: '磁性' },
-  { value: 'advertising', label: '广告营销' },
-  { value: 'vocal-fry', label: '气泡音' },
-  { value: 'ASMR', label: '低语' },
-  { value: 'news', label: '新闻播报' },
-  { value: 'entertainment', label: '娱乐八卦' },
-  { value: 'dialect', label: '方言' },
-];
+
+
+
 
 export default function CreatePage() {
   const navigate = useNavigate();
@@ -149,529 +73,157 @@ export default function CreatePage() {
   const [remixVideoUrl, setRemixVideoUrl] = useState('');
   const [remixVideoFileName, setRemixVideoFileName] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [audioPreview, setAudioPreview] = useState('');
-  const [isPreviewingAudio, setIsPreviewingAudio] = useState(false);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const [userVoices, setUserVoices] = useState<UserVoice[]>([]);
-  const [doubaoVoice, setDoubaoVoice] = useState<{ id: string; name: string } | null>(null);
-  const [audioDuration, setAudioDuration] = useState(0);
-
-  // Audio mode state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  // ── UI 状态 ────────────────────────────────────────────────────
+  const [dragOverImage, setDragOverImage] = useState(false);
+  const [dragOverVideo, setDragOverVideo] = useState(false);
   const [uploadedAudioFile, setUploadedAudioFile] = useState<File | null>(null);
   const [uploadedAudioUrl, setUploadedAudioUrl] = useState('');
   const [uploadedAudioName, setUploadedAudioName] = useState('');
   const [isRecognizingAudio, setIsRecognizingAudio] = useState(false);
-
-  // Batch mode state
   const [batchSegments, setBatchSegments] = useState<Array<{ id: string; text: string; audioUrl: string; audioName: string }>>([]);
   const [batchInputText, setBatchInputText] = useState('');
-  const [isAudioDurationMode, setIsAudioDurationMode] = useState(true);
-  // TTS generation cache: avoid re-generating audio if params haven't changed
-  const [cachedTts, setCachedTts] = useState<{
-    audioUrl: string;
-    audioDuration: number;
-    text: string;
-    voiceId: string;
-    speed: number;
-    vol: number;
-    pitch: number;
-    emotion: string;
-  } | null>(null);
-  const [imageEffect, setImageEffect] = useState('zoom-in');
-  const [transitionEffect, setTransitionEffect] = useState('fade');
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [dragOverImage, setDragOverImage] = useState(false);
-  const [dragOverVideo, setDragOverVideo] = useState(false);
-
-  // Progress dialog state for gallery mode
-  type StepStatus = 'pending' | 'active' | 'completed' | 'failed';
-  interface ProgressStep {
-    label: string;
-    status: StepStatus;
-    detail?: string;
-  }
-  const [progressOpen, setProgressOpen] = useState(false);
-  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
-  const [progressError, setProgressError] = useState<string | null>(null);
-
-  const updateStep = useCallback((index: number, status: StepStatus, detail?: string) => {
-    setProgressSteps((prev) => {
-      const next = [...prev];
-      if (next[index]) {
-        next[index] = { ...next[index], status, detail: detail ?? next[index].detail };
-      }
-      return next;
-    });
-  }, []);
-
-  const initProgress = useCallback((hasBgm: boolean, isGallery = true) => {
-    if (isGallery) {
-      const steps: ProgressStep[] = [
-        { label: '创建任务', status: 'active' },
-        { label: '语音合成', status: 'pending' },
-      ];
-      if (hasBgm) {
-        steps.push({ label: '背景音乐混音', status: 'pending' });
-      }
-      steps.push(
-        { label: '文案分断与计算', status: 'pending' },
-        { label: '优化生图提示词', status: 'pending' },
-        { label: 'AI生成图片', status: 'pending' },
-        { label: '合成轮播视频', status: 'pending' },
-      );
-      setProgressSteps(steps);
-    } else {
-      const steps: ProgressStep[] = [
-        { label: '创建任务', status: 'active' },
-        { label: '提交生成请求', status: 'pending' },
-        { label: '等待视频生成完成', status: 'pending' },
-      ];
-      setProgressSteps(steps);
-    }
-    setProgressError(null);
-    setProgressOpen(true);
-  }, []);
-
-  const isDoubaoClonedVoice = useCallback((id: string) => {
-    return doubaoVoice?.id === id;
-  }, [doubaoVoice]);
-
-  const [bgmConfig, setBgmConfig] = useState<BgmConfig>({
-    enabled: false,
-    url: '',
-    volume: 5,
-    name: '',
-  });
+  const [bgmConfig, setBgmConfig] = useState<BgmConfig>({ enabled: false, url: '', volume: 5, name: '' });
   const [subtitleConfig, setSubtitleConfig] = useState<SubtitleConfig>({
     enabled: false,
     font: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
     size: 'size3',
     style: 'style1',
   });
-  const [generateBase, setGenerateBase] = useState(true);
-  const [generateMerged, setGenerateMerged] = useState(true);
+  const [imageEffect, setImageEffect] = useState('zoom-in');
+  const [transitionEffect, setTransitionEffect] = useState('fade');
   const [perImageDuration, setPerImageDuration] = useState(6);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>(undefined);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [effectOpen, setEffectOpen] = useState(false);
+  const [generateBase, setGenerateBase] = useState(true);
+  const [generateMerged, setGenerateMerged] = useState(true);
 
-  // Draft save/restore
-  const [draftRestored, setDraftRestored] = useState(false);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  // ── Refs ─────────────────────────────────────────────────────────
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const hasContent = prompt.trim().length > 0 || audioText.trim().length > 0;
-  const hasAudioText = audioText.trim().length > 0;
+  // ── 音色相关 ────────────────────────────────────────────────────
+  const [userVoices, setUserVoices] = useState<UserVoice[]>([]);
+  const [doubaoVoice, setDoubaoVoice] = useState<{ id: string; name: string } | null>(null);
 
-  // Draft auto-save to localStorage
-  const DRAFT_KEY = 'create_page_draft';
-  useEffect(() => {
-    if (!draftRestored) return;
-    const draft = {
-      mode, prompt, audioText, voiceId, speed, vol, pitch, emotion,
-      size, seconds, uploadedImageUrl, remixVideoUrl, remixVideoFileName,
-      imageEffect, transitionEffect,
-      bgmConfig, subtitleConfig,
-      generateBase, generateMerged, perImageDuration,
-      uploadedAudioUrl, uploadedAudioName, batchSegments, batchInputText,
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }, [mode, prompt, audioText, voiceId, speed, vol, pitch, emotion, size, seconds, uploadedImageUrl, remixVideoUrl, remixVideoFileName, imageEffect, transitionEffect, bgmConfig, subtitleConfig, generateBase, generateMerged, perImageDuration, draftRestored, uploadedAudioUrl, uploadedAudioName, batchSegments, batchInputText]);
+  const isDoubaoClonedVoice = useCallback((id: string): boolean => {
+    return !!doubaoVoice && id === doubaoVoice.id;
+  }, [doubaoVoice]);
+  // isUploading moved to useFileUploads hook
+  // ── TTS 预览（通过 useTTSPreview hook） ─────────────────────────
+  const {
+    audioPreview, isPreviewingAudio, isPlayingPreview, audioDuration, cachedTts,
+    audioRef,
+    setAudioPreview, setAudioDuration, setCachedTts, setIsPlayingPreview,
+    blobToBase64, recognizeAudio, handlePreviewAudio,
+  } = useTTSPreview({
+    audioText, voiceId, speed, vol, pitch, emotion, isDoubaoClonedVoice,
+  });
 
-  // Restore draft on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) { setDraftRestored(true); return; }
-      const d = JSON.parse(raw);
-      if (d.mode) setMode(d.mode);
-      if (d.prompt !== undefined) setPrompt(d.prompt);
-      if (d.audioText !== undefined) setAudioText(d.audioText);
-      if (d.voiceId) setVoiceId(d.voiceId);
-      if (d.speed !== undefined) setSpeed(d.speed);
-      if (d.vol !== undefined) setVol(d.vol);
-      if (d.pitch !== undefined) setPitch(d.pitch);
-      if (d.emotion) setEmotion(d.emotion);
-      if (d.size) setSize(d.size);
-      if (d.seconds) setSeconds(d.seconds);
-      if (d.uploadedImageUrl) setUploadedImageUrl(d.uploadedImageUrl);
-      if (d.remixVideoUrl) setRemixVideoUrl(d.remixVideoUrl);
-      if (d.remixVideoFileName) setRemixVideoFileName(d.remixVideoFileName);
-      if (d.imageEffect) setImageEffect(d.imageEffect);
-      if (d.transitionEffect) setTransitionEffect(d.transitionEffect);
-      if (d.bgmConfig) setBgmConfig(d.bgmConfig);
-      if (d.subtitleConfig) setSubtitleConfig(d.subtitleConfig);
-      if (typeof d.generateBase === 'boolean') setGenerateBase(d.generateBase);
-      if (typeof d.generateMerged === 'boolean') setGenerateMerged(d.generateMerged);
-      if (typeof d.perImageDuration === 'number') setPerImageDuration(d.perImageDuration);
-      if (d.uploadedAudioUrl) setUploadedAudioUrl(d.uploadedAudioUrl);
-      if (d.uploadedAudioName) setUploadedAudioName(d.uploadedAudioName);
-      if (d.batchSegments) setBatchSegments(d.batchSegments);
-      if (d.batchInputText !== undefined) setBatchInputText(d.batchInputText);
-      if (d.prompt || d.audioText || d.uploadedAudioUrl || d.batchInputText || (d.batchSegments && d.batchSegments.length > 0)) {
-        toast.info('已自动恢复上次未提交的草稿', { action: { label: '清除', onClick: () => { localStorage.removeItem(DRAFT_KEY); window.location.reload(); } } });
-      }
-    } catch { /* ignore */ }
-    setDraftRestored(true);
-  }, []);
 
-  const clearDraft = () => {
-    localStorage.removeItem(DRAFT_KEY);
-    setMode('gallery');
-    setPrompt('');
-    setAudioText('');
-    setVoiceId('zh_female_qingxinnvsheng_uranus_bigtts');
-    setSpeed(1.0);
-    setVol(1.0);
-    setPitch(0);
-    setEmotion('default');
-    setSize('720x1280');
-    setSeconds('8');
-    setUploadedImageUrl('');
-    setRemixVideoUrl('');
-    setRemixVideoFileName('');
-    setImageEffect('zoom-in');
-    setTransitionEffect('fade');
-    setBgmConfig({ enabled: false, url: '', volume: 5, name: '' });
-    setSubtitleConfig({ enabled: false, font: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif', size: 'size3', style: 'style1' });
-    setPerImageDuration(6);
-    setUploadedAudioFile(null);
-    setUploadedAudioUrl('');
-    setUploadedAudioName('');
-    setBatchSegments([]);
-    setBatchInputText('');
-    setSelectedTemplateId(undefined);
-    toast.success('草稿已清除');
-  };
+  // ── 进度状态（通过 useGenerationProgress hook） ─────────────────
+  const {
+    progressOpen, setProgressOpen, progressSteps, progressError,
+    updateStep, initProgress, setProgressError,
+  } = useGenerationProgress();
 
-  // Reset audio preview when voice changes
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    setAudioPreview('');
-    setIsPlayingPreview(false);
-    setAudioDuration(0);
-  }, [voiceId]);
+  // ── 文件上传（通过 useFileUploads hook） ────────────────────────
+  const { isUploading, setIsUploading, uploadToStorage, processImageFile, processVideoFile, processAudioFile } = useFileUploads();
 
-  // Load user cloned voices and configured Doubao voice
-  const loadVoices = useCallback(() => {
-    getUserVoices()
-      .then((voices) => setUserVoices(voices.filter((v) => v.status === 'ready')))
-      .catch(() => setUserVoices([]));
-
-    const cfgVoiceId = getDoubaoVoiceId();
-    const cfgVoiceName = getDoubaoVoiceName();
-    if (cfgVoiceId) {
-      setDoubaoVoice({ id: cfgVoiceId, name: cfgVoiceName || '我的豆包音色' });
-    }
-  }, []);
-
-  useEffect(() => {
-    loadVoices();
-  }, [loadVoices]);
-
-  // Restore last selected voice on mount / when settings load
-  useEffect(() => {
-    if (voiceId !== 'zh_female_qingxinnvsheng_uranus_bigtts') return;
-    const lastVoice = settings?.last_voice_id;
-    if (lastVoice) {
-      setVoiceId(lastVoice);
-      return;
-    }
-    const cfgVoiceId = getDoubaoVoiceId();
-    if (cfgVoiceId) {
-      setVoiceId(cfgVoiceId);
-    }
-  }, [settings?.last_voice_id]);
-
-  // Reload voices when API settings are saved
-  useEffect(() => {
-    const handler = () => {
-      loadVoices();
-      const cfgVoiceId = getDoubaoVoiceId();
-      if (cfgVoiceId) {
-        setVoiceId(cfgVoiceId);
-        setDoubaoVoice({ id: cfgVoiceId, name: getDoubaoVoiceName() || '我的豆包音色' });
-      }
-    };
-    window.addEventListener('api-settings-saved', handler);
-    return () => window.removeEventListener('api-settings-saved', handler);
-  }, [loadVoices]);
-
-  const saveLastVoice = useCallback(async (id: string) => {
-    if (!user) return;
-    try {
-      await supabase.from('user_settings').upsert({
-        user_id: user.id,
-        last_voice_id: id,
-      }, { onConflict: 'user_id' });
-    } catch {
-      // ignore save errors
-    }
-  }, [user]);
-
-  const handleSelectClonedVoice = (id: string, name: string) => {
-    setVoiceId(id);
-    saveLastVoice(id);
-    toast.success(`已选择音色: ${name}`);
-  };
-
-  const handleSettingsSaved = () => {
-    loadVoices();
-    const cfgVoiceId = getDoubaoVoiceId();
-    if (cfgVoiceId) {
-      setVoiceId(cfgVoiceId);
-      setDoubaoVoice({ id: cfgVoiceId, name: getDoubaoVoiceName() || '我的豆包音色' });
-    }
-  };
-
-  /** 应用模板预设参数到当前页面 */
-  const handleTemplateSelect = useCallback((template: VideoTemplate) => {
-    setSelectedTemplateId(template.id);
-    setImageEffect(template.imageEffect);
-    setTransitionEffect(template.transitionEffect);
-    if (template.perImageDuration) setPerImageDuration(template.perImageDuration);
-    if (template.size) setSize(template.size);
-    if (template.seconds) setSeconds(String(template.seconds));
-    if (template.bgm) {
-      setBgmConfig({
-        enabled: true,
-        url: template.bgm.url,
-        volume: template.bgm.volume,
-        name: template.bgm.name,
-      });
-    }
-    if (template.subtitleStyle) {
-      setSubtitleConfig({
-        enabled: template.subtitleStyle.enabled,
-        font: subtitleConfig.font,
-        size: template.subtitleStyle.size,
-        style: template.subtitleStyle.style,
-      });
-    }
-    toast.success(`已应用模板：${template.name}`);
-  }, [subtitleConfig.font]);
-
-  const uploadToStorage = useCallback(async (file: File, bucket: string) => {
-    setIsUploading(true);
-    try {
-      const ext = file.name.split('.').pop() ?? 'bin';
-      const path = `uploads/${crypto.randomUUID()}.${ext}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file, {
-        contentType: file.type,
-        cacheControl: '3600',
-      });
-      if (error) throw error;
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      return data.publicUrl;
-    } finally {
-      setIsUploading(false);
-    }
-  }, []);
-
-  const processImageFile = async (file: File) => {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      toast.error('仅支持 JPEG、PNG、WebP 格式图片');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('图片大小不能超过 10MB');
-      return;
-    }
-    try {
-      const url = await uploadToStorage(file, 'generated-media');
-      setUploadedImageUrl(url);
-      toast.success('图片上传成功');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '上传失败';
-      toast.error(`上传失败: ${msg}`);
-    }
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── 上传处理函数 ──────────────────────────────────────────────
+  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await processImageFile(file);
-  };
+    await processImageFile(file, setUploadedImageUrl);
+  }, [processImageFile, setUploadedImageUrl]);
 
-  const handleImageDrop = (e: React.DragEvent) => {
+  const handleImageDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setDragOverImage(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    processImageFile(file);
-  };
+    await processImageFile(file, setUploadedImageUrl);
+  }, [processImageFile, setUploadedImageUrl]);
 
-  const processVideoFile = async (file: File) => {
-    if (!file.type.startsWith('video/')) {
-      toast.error('仅支持视频文件（MP4、MOV、WebM等）');
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('视频大小不能超过 50MB');
-      return;
-    }
-    try {
-      const url = await uploadToStorage(file, 'generated-media');
-      setRemixVideoUrl(url);
-      setRemixVideoFileName(file.name);
-      toast.success('视频上传成功');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '上传失败';
-      toast.error(`视频上传失败: ${msg}`);
-    }
-  };
-
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await processVideoFile(file);
-  };
+    await processVideoFile(file, setRemixVideoUrl, setRemixVideoFileName);
+  }, [processVideoFile, setRemixVideoUrl, setRemixVideoFileName]);
 
-  const handleVideoDrop = (e: React.DragEvent) => {
+  const handleVideoDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setDragOverVideo(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    processVideoFile(file);
-  };
+    await processVideoFile(file, setRemixVideoUrl, setRemixVideoFileName);
+  }, [processVideoFile, setRemixVideoUrl, setRemixVideoFileName]);
 
-  const processAudioFile = async (file: File) => {
-    const validTypes = ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
-    const validExts = ['.wav', '.m4a', '.mp3'];
-    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-    if (!validTypes.some((t) => file.type.includes(t.replace('audio/', ''))) && !validExts.includes(ext)) {
-      toast.error('仅支持 WAV、M4A、MP3 格式音频');
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error('音频大小不能超过 20MB');
-      return;
-    }
-    try {
-      const url = await uploadToStorage(file, 'generated-media');
-      setUploadedAudioUrl(url);
-      setUploadedAudioName(file.name);
-      setUploadedAudioFile(file);
-      toast.success('音频上传成功');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '上传失败';
-      toast.error(`音频上传失败: ${msg}`);
-    }
-  };
-
-  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAudioUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await processAudioFile(file);
-  };
+    await processAudioFile(file, setUploadedAudioUrl, setUploadedAudioName, setUploadedAudioFile);
+  }, [processAudioFile, setUploadedAudioUrl, setUploadedAudioName, setUploadedAudioFile]);
 
-  const handleAudioDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    processAudioFile(file);
-  };
-
-  /**
-   * 将 Blob 转为 base64 字符串（不含 data URL 前缀）
-   */
-  const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        resolve(dataUrl.split(',')[1]);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  // ── 音色管理 ──────────────────────────────────────────────────
+  const loadVoices = useCallback(async () => {
+    try {
+      const id = getDoubaoVoiceId();
+      if (id) {
+        setDoubaoVoice({ id, name: getDoubaoVoiceName() });
+      } else {
+        setDoubaoVoice(null);
+      }
+      const voices = await getUserVoices();
+      setUserVoices(voices || []);
+    } catch { /* ignore */ }
   }, []);
 
-  /**
-   * 调用 Edge Function 进行短语音识别
-   */
-  const recognizeAudio = async (audioBlob: Blob, format: 'wav' | 'm4a' = 'wav'): Promise<string> => {
-    const speechBase64 = await blobToBase64(audioBlob);
-    const len = audioBlob.size;
-    const { data, error } = await supabase.functions.invoke('short-speech-recognition', {
-      body: {
-        speech: speechBase64,
-        len,
-        format,
-        rate: 16000,
-        cuid: 'web-user-cuid',
-      },
-    });
-    if (error) throw error;
-    if (data?.err_no !== 0) throw new Error(data?.err_msg || `语音识别失败 ${data?.err_no}`);
-    return data.result?.[0] ?? '';
-  };
+  useEffect(() => { loadVoices(); }, [loadVoices]);
 
-  const handlePreviewAudio = async () => {
-    if (!user) {
-      toast.error('请先登录后再使用语音合成功能');
-      navigate('/login', { state: { from: { pathname: '/' } } });
-      return;
-    }
-    if (!audioText.trim()) {
-      toast.error('请先输入音频文本');
-      return;
-    }
-    // If already playing, pause it
-    if (audioRef.current && isPlayingPreview) {
-      audioRef.current.pause();
-      setIsPlayingPreview(false);
-      return;
-    }
-    // If audio already generated and paused, resume
-    if (audioRef.current && audioPreview && !isPlayingPreview) {
-      audioRef.current.play().catch(() => toast.error('播放失败'));
-      setIsPlayingPreview(true);
-      return;
-    }
-    // Generate new audio
-    setIsPreviewingAudio(true);
-    try {
-      const { audioUrl, audioLength } = await generateTTS({
-        text: audioText.trim(),
-        voiceId,
-        speed,
-        vol,
-        pitch,
-        emotion: emotion === 'default' ? undefined : emotion,
-        cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
-      });
-      setAudioPreview(audioUrl);
-      setAudioDuration(audioLength);
-      // Cache the generated TTS for reuse during creation
-      setCachedTts({
-        audioUrl,
-        audioDuration: audioLength,
-        text: audioText.trim(),
-        voiceId,
-        speed,
-        vol,
-        pitch,
-        emotion,
-      });
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      audio.onended = () => setIsPlayingPreview(false);
-      audio.onpause = () => setIsPlayingPreview(false);
-      audio.onplay = () => setIsPlayingPreview(true);
-      audio.play().catch(() => toast.error('播放失败'));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '音频生成失败';
-      toast.error(`音频预览失败: ${msg}`);
-    } finally {
-      setIsPreviewingAudio(false);
-    }
+  const saveLastVoice = useCallback((id: string) => {
+    localStorage.setItem('last_voice_id', id);
+  }, []);
+
+  const handleSelectClonedVoice = useCallback((voice: UserVoice) => {
+    setVoiceId(voice.voice_id ?? voice.id);
+    saveLastVoice(voice.voice_id ?? voice.id);
+  }, [setVoiceId, saveLastVoice]);
+
+  const handleTemplateSelect = useCallback((templateId: string | undefined) => {
+    setSelectedTemplateId(templateId);
+    setTemplateOpen(false);
+  }, []);
+
+  // ── 音频时长模式 ──────────────────────────────────────────────
+  const isAudioDurationMode = seconds === 'audio';
+
+  // ── 草稿恢复与自动保存 ───────────────────────────────────────
+  const draftSetters: CreateDraftSetters = {
+    setMode, setPrompt, setAudioText, setVoiceId, setSpeed, setVol, setPitch, setEmotion,
+    setSize, setSeconds, setUploadedImageUrl, setRemixVideoUrl, setRemixVideoFileName,
+    setImageEffect, setTransitionEffect, setBgmConfig, setSubtitleConfig,
+    setGenerateBase, setGenerateMerged, setPerImageDuration,
+    setUploadedAudioUrl, setUploadedAudioName, setBatchSegments, setBatchInputText,
+    setSelectedTemplateId, setUploadedAudioFile,
   };
+  const draftRestored = useRestoreDraft(draftSetters);
+  const clearDraft = useClearDraft(draftSetters);
+
+  // Auto-save draft on state changes
+  const draftState: CreateDraftState = {
+    mode, prompt, audioText, voiceId, speed, vol, pitch, emotion,
+    size, seconds, uploadedImageUrl, remixVideoUrl, remixVideoFileName,
+    imageEffect, transitionEffect, bgmConfig, subtitleConfig,
+    generateBase, generateMerged, perImageDuration,
+    uploadedAudioUrl, uploadedAudioName, batchSegments, batchInputText,
+  };
+  useAutoSaveDraft(draftState, draftRestored);
+
+  // ── 草稿状态 ────────────────────────────────────────────────────
+  const hasContent = prompt.trim().length > 0 || audioText.trim().length > 0;
+  const hasAudioText = audioText.trim().length > 0;
 
   const handleGenerate = () => {
     if (!user) {
