@@ -15,7 +15,7 @@ export interface PlatformMeta {
 export const PLATFORMS: PlatformMeta[] = [
   { key: 'bilibili', label: 'B站', desc: 'bilibili.com' },
   { key: 'douyin', label: '抖音', desc: 'douyin.com' },
-  { key: 'xiaohongshu', label: '小红书', desc: 'xiaohongshu.com', disabled: true, comingSoon: true },
+  { key: 'xiaohongshu', label: '小红书', desc: 'xiaohongshu.com' },
   { key: 'tencent_video', label: '视频号', desc: 'WeChat Channels' },
 ];
 
@@ -287,3 +287,4 @@ function mapStatus(s: string): PublishProgress['status'] {
       return 'pending';
   }
 }
+                                  
