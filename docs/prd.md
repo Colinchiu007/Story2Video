@@ -725,7 +725,57 @@ AI视频创作平台
 - backend: orchestrator `POST /api/jobs/publish-video`（feature gate: video_publish）
 - backend: orchestrator `services/bilibili_publisher.py` — B站上传完整流程
 - backend: auth via JWT Bearer token 或 X-API-Key header
+## 7.18 付费会员系统
 
+### 7.18.1 功能描述
+会员分级系统和功能权限控制。免费用户可使用基础功能，付费用户解锁高级创作能力。系统通过 orchestrator 后端管理订阅生命周期、用量配额和 feature gate 权限。
+
+### 7.18.2 计划层级
+
+| 计划 | 价格 | 配额 | 特色功能 |
+|------|------|------|---------|
+| 免费版 | ¥0 | 每日 3 次视频生成 | 基础分句、固定模板 |
+| 基础版 | ¥9.99 | 每日 10 次视频生成 | 声音克隆、AI 优化 |
+| 专业版 | ¥29.99 | 每日 50 次视频生成 | 批量分句、无水印 |
+| 企业版 | ¥99.99 | 每日 200 次视频生成 | 全部高级功能、优先支持 |
+
+### 7.18.3 Feature Gate 映射
+
+| 功能 | 所需最低计划 | 说明 |
+|------|------------|------|
+| `voice_clone` | 基础版 | 声音克隆 / 高级语音 |
+| `video_fixed_template` | 基础版 | 视频固定模板 |
+| `batch_split` | 专业版 | 批量分句 |
+
+### 7.18.4 前端组件
+
+| 组件 | 用途 |
+|------|------|
+| `useOrchestratorMembership` Hook | 获取会员信息与用量配额，自动管理 JWT 生命周期 |
+| `useFeatureGate` Hook | 功能级权限检测，配合 `RequireFeature` 组件做 UI 锁定 |
+| `RequireFeature` 组件 | 包装高阶组件，不满足权限时显示 `LockedFeature` 占位 |
+| `LockedFeature` 组件 | 锁定时默认占位 UI，附升级引导 |
+| `MembershipCard` | 个人主页会员卡片，展示计划名称与权益 |
+| `MembershipUpgradeDialog` | 套餐对比 → 订单创建 → 支付确认 → 升级成功全流程 |
+| `QuotaWidget` | 用量进度条（如 3/10），不足时显示预警 |
+| `RouteGuard` | 路由级别的会员权限守卫 |
+| `ApiSettingsDialog` 会员 Tab | 按会员等级限制 API Key 配置项可见性 |
+
+### 7.18.5 后端集成
+
+- **orchestrator `POST /api/payment/create-checkout`**: 创建订单
+- **orchestrator `POST /api/payment/confirm-mock`**: 确认支付（开发阶段 mock）
+- **orchestrator `POST /api/auth/subscription`**: 获取订阅信息
+- **orchestrator `POST /api/auth/login`**: 自动注册/登录 shadow 账户
+- **orchestrator Feature Gates**: `premium_content` 等 gate 控制后端功能暴露
+
+### 7.18.6 健壮性设计
+
+- Token 自动刷新：access_token 过期后自动用 refresh_token 续期
+- Stale-while-revalidate：从 localStorage 展示缓存数据，后台异步刷新
+- 401 自动重试：token 失效时清除并重新登录
+- 降级：orchestrator 不可用时会员信息返回 null，功能按免费权限处理
+- 配额不足预警：接近上限时 CreatePage 显示 amber 提示
 ## 8. 本期不实现功能
 
 
@@ -737,11 +787,18 @@ AI视频创作平台
 - 版本历史与回滚
 
 ### 8.2 发布到第三方平台
-- 集成 Multi-Publish API
-- 一键发布到抖音、视频号、B站、小红书等平台
-- 定时发布功能
+- **状态：Phase 1 已实现**（orchestrator 后端发布管道）
+- 一键发布到抖音 / B站（集成 orchestrator `/api/jobs/publish-video`）
+- Story2Video 前端 GalleryPage 新增「发布到...」按钮 + PublishDialog 弹窗
+- 发布进度轮询：提交 → 下载 → 发布 → 完成
+- 依赖 orchestrator 的 bilibili_publisher / douyin_publisher 服务 + cookie 凭据
+- **Phase 2 已实现**：定时发布功能（orchestrator scheduled_at 字段 + PublishDialog 定时开关）
+- **框架已扩展**：视频号、小红书平台按钮已加入 PublishDialog（即将支持状态）
+- **待实现**：视频号、小红书实际发布实现
 
 ### 8.3 付费会员功能
-- 集成 orchestrator 订阅系统
-- 会员权益管理（去水印、高清导出、更多模板）
-- 用量配额管理
+- **状态：已实现**（Phase 1 + Phase 2）
+- 通过 `useOrchestratorMembership` Hook 接入 orchestrator 订阅系统
+- 会员权益管理：Feature Gate 控制（voice_clone/batch_split/video_fixed_template）
+- 用量配额管理：QuotaWidget 展示 + CreatePage 预警提示
+- 详细设计见 [`docs/membership-design.md`](membership-design.md)

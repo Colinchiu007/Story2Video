@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { PLATFORMS, type Platform } from '@/services/orchestrator-api';
 import { getVideoTask, listChildTasks, updateVideoTask, startTextToVideo, startImageToVideo, startRemixVideo, publishVideo } from '@/services/video-generation';
 import { getSubtitleStyleClasses } from '@/components/SubtitleSettings';
 import ShareButton from '@/components/ShareButton';
@@ -26,7 +27,7 @@ export default function ResultPage() {
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
-  const [publishPlatform, setPublishPlatform] = useState<'bilibili' | 'douyin'>('bilibili');
+  const [publishPlatform, setPublishPlatform] = useState<Platform>('bilibili');
 
   useEffect(() => {
     if (!id) return;
@@ -70,7 +71,8 @@ export default function ResultPage() {
         desc: task.prompt || '',
         coverUrl,
       });
-      const platformLabel = publishPlatform === 'bilibili' ? 'B站' : '抖音';
+      const meta = PLATFORMS.find(p => p.key === publishPlatform);
+      const platformLabel = meta?.label || publishPlatform;
       setPublishSuccess(`已发布到 ${platformLabel}！任务ID: ${result.taskId}`);
       toast.success(`视频已提交到 ${platformLabel} 发布队列`);
     } catch (err) {
@@ -404,12 +406,13 @@ export default function ResultPage() {
                 <div className="flex gap-2 flex-1">
                   <select
                     value={publishPlatform}
-                    onChange={(e) => setPublishPlatform(e.target.value as 'bilibili' | 'douyin')}
+                    onChange={(e) => setPublishPlatform(e.target.value as Platform)}
                     className="h-11 px-2 text-sm rounded-md border border-input bg-background shrink-0"
                     disabled={publishing || !!publishSuccess}
                   >
-                    <option value="bilibili">B站</option>
-                    <option value="douyin">抖音</option>
+                    {PLATFORMS.filter(p => !p.disabled).map(p => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
                   </select>
                   <Button
                     variant="outline"
@@ -424,7 +427,7 @@ export default function ResultPage() {
                     ) : (
                       <Upload className="h-4 w-4 mr-2" />
                     )}
-                    {publishing ? '发布中...' : publishSuccess ? '已发布' : `发布到${publishPlatform === 'bilibili' ? 'B站' : '抖音'}`}
+                    {publishing ? '发布中...' : publishSuccess ? '已发布' : `发布到${platformLabel}`}
                   </Button>
                 </div>
               )}

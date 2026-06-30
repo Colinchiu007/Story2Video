@@ -1,5 +1,41 @@
 # Story2Video — 变更日志
 
+## [v1.4.0] — 2026-06-30
+
+### 新增功能
+- **定时发布** (8.2): PublishDialog 新增定时开关，支持选择未来时间定时发布
+  - scheduled_at ISO 8601 字段从前端 → orchestrator 背景任务流转
+  - asyncio.sleep() 在 background task 中等待到定时时间再执行
+  - 状态生命周期扩展: pending → scheduled → downloading → publishing → success/failed
+- **平台列表数据驱动**: PublishDialog 平台选择从 orchestrator-api PLATFORMS 配置数组动态渲染
+- **平台框架扩展**: 视频号、小红书平台按钮已加入 PublishDialog（coming_soon 状态）
+
+### 变更
+- PublishDialog.tsx: 新增 Switch 定时开关 + datetime-local 输入 + scheduled 状态展示
+- orchestrator-api.ts: Platform 联合类型扩展 (xiaohongshu, tencent_video) + PLATFORMS 配置数组
+- orchestrator-api.ts: PublishRequest + scheduled_at 字段，mapStatus 新增 'scheduled' 映射
+- ResultPage.tsx: 平台选择下拉框从 hardcoded 改为 PLATFORMS 数据驱动
+
+### 后端
+- orchestrator: VideoPublishRequest + scheduled_at 可选字段
+- orchestrator: _publish_video 背景任务支持 ISO 8601 定时等待 (asyncio.sleep)
+- orchestrator: 状态 'scheduled' 立即持久化，API 返回 scheduled_at 给前端轮询
+
+### 集成
+- orchestrator publish.py: supported/coming_soon 平台分组（视频号、小红书待实现）
+## [v1.3.0] — 2026-06-29
+
+### 新增功能
+- **发布集成** (8.2): Story2Video 视频可一键发布到第三方平台
+- PublishDialog 组件：平台选择（抖音/B站）、标题/简介/标签编辑、发布进度跟踪
+- orchestrator-api 服务层：SSO 登录、publish-video API 调用、状态轮询
+- GalleryPage: 视频结果区域新增「发布到...」按钮
+
+### 集成
+- orchestrator: 复用 `/api/jobs/publish-video` 端点 + bilibili_publisher / douyin_publisher
+- 新增 `src/services/orchestrator-api.ts` — orchestrator SSO + 发布 API 封装
+- 新增 `src/components/PublishDialog.tsx` — 发布交互弹窗
+
 ## [v1.2.0] — 2026-06-27
 
 ### 新增功能
