@@ -793,8 +793,9 @@ AI视频创作平台
 - 发布进度轮询：提交 → 下载 → 发布 → 完成
 - 依赖 orchestrator 的 bilibili_publisher / douyin_publisher 服务 + cookie 凭据
 - **Phase 2 已实现**：定时发布功能（orchestrator scheduled_at 字段 + PublishDialog 定时开关）
-- **框架已扩展**：视频号、小红书平台按钮已加入 PublishDialog（即将支持状态）
-- **待实现**：视频号、小红书实际发布实现
+- **Phase 2 已实现**：视频号 ECS 发布（tencent_video_publisher 完整 API 流程）
+- **框架已扩展**：小红书平台按钮已加入 PublishDialog（即将支持状态）
+- **待实现**：小红书实际发布实现
 
 ### 8.3 付费会员功能
 - **状态：已实现**（Phase 1 + Phase 2）

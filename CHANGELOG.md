@@ -1,5 +1,26 @@
 # Story2Video — 变更日志
 
+## [v1.5.0] — 2026-06-30
+
+### 新增功能
+- **视频号 ECS 发布实现**: tencent_video_publisher 完整实现（5 步 API 流程）
+  - auth_data → 获取 finderUsername / uin
+  - helper_upload_params → 获取 authKey
+  - applyuploaddfs → 初始化分片上传
+  - uploadpartdfs → 8MB 分片上传（含重试）
+  - completepartuploaddfs → 完成上传 / post_create → 提交发布
+- **视频号封面上传**: 支持自动上传封面图片
+- **视频号定时发布**: post_create 支持 effectiveTime 参数定时发布
+
+### 变更
+- PLATFORMS 配置: tencent_video 从 coming_soon 移到可用平台
+- PublishDialog 视频号按钮从禁用变为可点击
+- orchestrator: tencent_video 从 coming_soon → available，新增 dispatch
+
+### 集成
+- orchestrator publish.py: 新增 `elif platform == "tencent_video"` 分发
+- orchestrator services/tencent_video_publisher.py: 全新 735 行 publisher
+
 ## [v1.4.0] — 2026-06-30
 
 ### 新增功能
