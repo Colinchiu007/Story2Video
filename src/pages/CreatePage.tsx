@@ -32,6 +32,7 @@ import EffectPicker, { EffectSettingsButton } from '@/components/EffectPicker';
 import { getTemplateById } from '@/lib/template-library';
 import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
 import { generateImagePrompts } from '@/lib/history-prompt';
+import { storyboardCompose, type StoryboardResult } from '@/services/storyboard-service';
 import { mixAudio, uploadMixedAudio } from '@/lib/audio-mixer';
 import type { CreateMode, UserVoice } from '@/types';
 import type { VideoTemplate } from '@/types/template';
@@ -489,12 +490,25 @@ export default function CreatePage() {
         const actualCount = imgSegments.length;
         updateStep(segIndex, 'completed', `语义分断为 ${actualCount} 段 (text-seg v1.0)`);
 
-        // Step 4: Generate image prompts with v9.0 strategy (client-side, no LLM)
+        // Step 4: Generate image prompts — storyboard strategy or v9.0 default
         const optIndex = segIndex + 1;
         updateStep(optIndex, 'active');
-        const optimizedPrompts = generateImagePrompts(imgSegments, audioText.trim());
-        updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
-        toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 杢`);
+
+        // Use storyboard strategy when opt-in (localStorage flag) or fall back to client-side prompt engine
+        const useStoryboard = localStorage.getItem('storyboard_enabled') === '1';
+        const storyboardStrategy = localStorage.getItem('storyboard_strategy') || 'xiaohei_storyboard';
+
+        let optimizedPrompts: string[];
+        if (useStoryboard) {
+          const results = await storyboardCompose(imgSegments, audioText.trim(), storyboardStrategy);
+          optimizedPrompts = results.map(r => r.prompt);
+          updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条故事板提示词 (${storyboardStrategy})`);
+          toast.success(`故事板提示词生成完成，共 ${optimizedPrompts.length} 条`);
+        } else {
+          optimizedPrompts = generateImagePrompts(imgSegments, audioText.trim());
+          updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
+          toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 条`);
+        }
 
         // Step 5: Generate images with optimized prompts
         const imgIndex = optIndex + 1;
