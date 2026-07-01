@@ -1,5 +1,21 @@
 # Story2Video — 变更日志
 
+## [v1.6.0] — 2026-07-01
+
+### 新增功能
+- **故事板策略系统**: 可插拔的故事板 prompt 生成架构
+  - prompt-engine 新增 `StoryboardStrategy` 基类 + 注册表 + REST 端点 `/v1/storyboard/*`
+  - 首个小黑插画故事板策略 (`xiaohei_storyboard`): 8 种构图模式 + 14 动作 + 23 物件
+- **CreatePage 故事板集成**: 可选 storyboard compose 替代 `generateImagePrompts` v9.0
+  - `StoryboardSettings` UI 组件: Switch 开关 + 策略选择下拉
+  - 通过 localStorage (`storyboard_enabled`, `storyboard_strategy`) 控制
+- **双模式服务客户端**: `storyboard-service.ts`
+  - 服务端模式 → prompt-engine API（失败自动降级）
+  - 客户端模式 → `storyboard-prompt.ts`（内置引擎）
+
+### 文档
+- PRD §7.19 更新为已集成状态，新增服务客户端说明
+
 ## [v1.5.2] — 2026-06-30
 
 ### 文档
