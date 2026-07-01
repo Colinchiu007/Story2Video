@@ -60,6 +60,7 @@ import TTSTextarea from '@/components/TTSTextarea';
 import VoiceSection from '@/components/VoiceSection';
 import AudioPreviewButtons from '@/components/AudioPreviewButtons';
 import TemplateSection from '@/components/TemplateSection';
+import StoryboardSettings from '@/components/StoryboardSettings';
 import VersionSelection from '@/components/VersionSelection';
 import SettingsGrid from '@/components/SettingsGrid';
 import SubmitSection from '@/components/SubmitSection';
@@ -1234,6 +1235,8 @@ export default function CreatePage() {
             setTemplateOpen={setTemplateOpen}
             handleTemplateSelect={handleTemplateSelect}
           />
+
+          <StoryboardSettings />
 
           {/* BGM Settings - always visible */}
           <BgmSettings
