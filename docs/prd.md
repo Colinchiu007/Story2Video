@@ -803,3 +803,62 @@ AI视频创作平台
 - 会员权益管理：Feature Gate 控制（voice_clone/batch_split/video_fixed_template）
 - 用量配额管理：QuotaWidget 展示 + CreatePage 预警提示
 - 详细设计见 [`docs/membership-design.md`](membership-design.md)
+
+
+## 7.19 Ian 小黑分镜 Prompt 模板
+
+### 7.19.1 功能描述
+为视频生成的图片提示词阶段引入 Ian 小黑插画的分镜方法论，将抽象概念转换为结构化分镜描述，提升视觉叙事的一致性。
+
+### 7.19.2 模块设计
+
+**文件**: `src/lib/storyboard-prompt.ts` (客户端引擎), `src/services/storyboard-service.ts` (HTTP 客户端)
+
+客户端引擎 (`storyboard-prompt.ts`)：
+- **8 种构图模式**: 流程展示、系统局部、前后对比、角色状态、概念隐喻、方法分层、地图路径、迷你漫画
+- **14 个动态动作 + 23 个视觉物体**: 从概念→构图匹配→动作/对象选择→视觉场景组装
+- **三步隐喻引擎**: `threeStepMetaphor(concept)` 将抽象概念分解为构图+动作+视觉描述
+- **creativeLevel 控制**: 1-10 调节色彩、约束、关键词数量，适应不同内容风格
+- **多候选生成**: `generateCandidates(concept, count=3)` 批量生成去重分镜方案
+
+服务客户端 (`storyboard-service.ts`)：
+- **服务端模式**: 调用 prompt-engine `/v1/storyboard/compose` API（通过 orchestrator 路由）
+- **客户端降级**: 服务不可用时自动回退到客户端 `storyboard-prompt.ts`
+- **统一接口**: `storyboardCompose(scenes, fullText, strategy)` → `StoryboardResult[]`
+- **策略枚举**: `storyboardStrategies()` 获取可用策略列表
+
+### 7.19.3 API 接口
+
+| 函数 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `threeStepMetaphor(concept)` | string | MetaphorResult | 概念→分镜三步转换 |
+| `composeStoryboardPrompt(concept, options?)` | string, StoryboardOptions | StoryboardPrompt | 完整分镜 prompt |
+| `generateCandidates(concept, count=3)` | string, number | StoryboardPrompt[] | 批量候选+去重 |
+| `renderPromptString(prompt)` | StoryboardPrompt | string | 渲染为 LLM 输入 |
+
+### 7.19.4 集成状态
+
+**当前状态：已集成到 CreatePage 生成管线**
+
+CreatePage Step 4（图片提示词生成）新增 optional storyboard 路径：
+- 默认: `generateImagePrompts()` (v9.0 客户端策略，维持原行为)
+- 开启 storyboard: `storyboardCompose()` 替代，通过 localStorage 控制
+
+**启用方式（localStorage）：**
+| 键 | 值 | 效果 |
+|----|----|------|
+| `storyboard_enabled=1` | `"1"` | 开启 storyboard compose（默认关闭） |
+| `storyboard_strategy` | `"xiaohei_storyboard"` | 选择策略，默认小黑插画风 |
+| `storyboard_service=1` | `"1"` | 使用 prompt-engine API（默认客户端降级） |
+
+**架构：**
+```
+CreatePage → storyboardCompose(scenes, fullText, strategy)
+  ├─ [API 模式] fetch → prompt-engine /v1/storyboard/compose
+  │     └─ 失败降级 → storyboard-prompt.ts（客户端）
+  └─ [客户端模式] → storyboard-prompt.ts（客户端渲染）
+```
+
+**后续规划：**
+- 策略选择 UI（CreatePage 设置面板中的下拉选择）
+- 策略预览（显示当前构图的视觉描述）
