@@ -803,3 +803,33 @@ AI视频创作平台
 - 会员权益管理：Feature Gate 控制（voice_clone/batch_split/video_fixed_template）
 - 用量配额管理：QuotaWidget 展示 + CreatePage 预警提示
 - 详细设计见 [`docs/membership-design.md`](membership-design.md)
+
+
+## 7.19 Ian 小黑分镜 Prompt 模板
+
+### 7.19.1 功能描述
+为视频生成的图片提示词阶段引入 Ian 小黑插画的分镜方法论，将抽象概念转换为结构化分镜描述，提升视觉叙事的一致性。
+
+### 7.19.2 模块设计
+
+**文件**: `src/lib/storyboard-prompt.ts`
+
+核心能力：
+- **8 种构图模式**: 流程展示、系统局部、前后对比、角色状态、概念隐喻、方法分层、地图路径、迷你漫画
+- **14 个动态动作 + 23 个视觉物体**: 从概念→构图匹配→动作/对象选择→视觉场景组装
+- **三步隐喻引擎**: `threeStepMetaphor(concept)` 将抽象概念分解为构图+动作+视觉描述
+- **creativeLevel 控制**: 1-10 调节色彩、约束、关键词数量，适应不同内容风格
+- **多候选生成**: `generateCandidates(concept, count=3)` 批量生成去重分镜方案
+
+### 7.19.3 API 接口
+
+| 函数 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `threeStepMetaphor(concept)` | string | MetaphorResult | 概念→分镜三步转换 |
+| `composeStoryboardPrompt(concept, options?)` | string, StoryboardOptions | StoryboardPrompt | 完整分镜 prompt |
+| `generateCandidates(concept, count=3)` | string, number | StoryboardPrompt[] | 批量候选+去重 |
+| `renderPromptString(prompt)` | StoryboardPrompt | string | 渲染为 LLM 输入 |
+
+### 7.19.4 集成路线
+- 当前模块独立可用，尚未集成到前端 CreatePage
+- 后续集成点：CreatePage 文案输入阶段的"开启小黑分镜"开关

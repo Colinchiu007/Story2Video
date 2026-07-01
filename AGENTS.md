@@ -68,46 +68,14 @@ MVP 拆成 ≤4h 的任务。
 - 更新 CHANGELOG.md
 - 通过秒哒平台部署
 
-## 质量门禁
 
-**PRD 阶段**：MVP 范围清晰 / AI 服务依赖明确 / 验收标准可验证
-**设计阶段**：渲染方案合理 / 最简单方案优先
-**开发阶段**：测试全通过 / 手动验证视频生成流程
-**Review 阶段**：CRITICAL 问题已修复 / API Key 安全审查通过
+## 详细规范
 
-## TDD 流程
+本文档只包含开发流程框架。详细规范已拆分到 `references/` 子目录：
 
-```
-RED   → 在 src/lib/*.test.ts 或 src/pages/**/__tests__/ 写失败测试
-GREEN → 最小实现让测试通过
-REFACTOR → 重构，保持测试通过
-```
-
-### 现有测试覆盖
-
-| 模块 | 测试文件 | 状态 |
-|------|---------|------|
-| slideshow (Canvas 视频合成) | `src/lib/slideshow.test.ts` | ✅ |
-| audio-mixer (Web Audio 混音) | `src/lib/audio-mixer.test.ts` | ✅ |
-| text-segmentation (文本分段) | `src/lib/text-segmentation.test.ts` | ✅ |
-| segment | `src/lib/segment.test.ts` | ✅ |
-| history-prompt | `src/lib/history-prompt.test.ts` | ✅ |
-| bgm-library | `src/lib/bgm-library.test.ts` | ✅ |
-| template-library | `src/lib/template-library.test.ts` | ✅ |
-| effects-library | `src/lib/effects-library.test.ts` | ✅ |
-| watermark | `src/lib/watermark.test.ts` | ✅ |
-| share | `src/lib/share.test.ts` | ✅ |
-| progress | `src/lib/progress.test.ts` | ✅ |
-| zip-utils | `src/lib/zip-utils.test.ts` | ✅ |
-
-## 提交规范
-
-```
-feat: 添加可灵视频生成 Edge Function
-fix: 修复音频混音音量问题
-docs: 更新 PRD 视频生成章节
-refactor: 重构 slideshow.ts Canvas 渲染逻辑
-```
+- **[references/testing.md](references/testing.md)** — TDD 流程与测试规范
+- **[references/quality-gates.md](references/quality-gates.md)** — 质量门禁详细说明
+- **[references/commits.md](references/commits.md)** — 提交规范
 
 ## 文档清单
 
