@@ -970,6 +970,8 @@ PENDING → DOWNLOADING → UPLOADING → SUBMITTING → REVIEWING → PUBLISHED
 **文件**: `src/lib/storyboard-prompt.ts` (客户端引擎), `src/services/storyboard-service.ts` (HTTP 客户端)
 
 客户端引擎 (`storyboard-prompt.ts`)：
+**文件**: `src/lib/storyboard-prompt.ts`
+核心能力：
 - **8 种构图模式**: 流程展示、系统局部、前后对比、角色状态、概念隐喻、方法分层、地图路径、迷你漫画
 - **14 个动态动作 + 23 个视觉物体**: 从概念→构图匹配→动作/对象选择→视觉场景组装
 - **三步隐喻引擎**: `threeStepMetaphor(concept)` 将抽象概念分解为构图+动作+视觉描述
@@ -1051,3 +1053,6 @@ CreatePage → storyboardCompose(scenes, fullText, strategy)
 | v1.2.0 | 2026-07-02 | 审查报告修复：补充视频时长限制(4.8.1)、音频文件限制(4.3.1)、并发策略(4.11)、会员配额定义(7.18.2a)、数据模型扩展(4.8a)、发布状态机(7.20)、Feature Gate 迁移(7.19.5)；新增异常边界用例 |
 
 > **注：** 本文档仅描述产品需求，不包含实现状态。实现进度请查阅 CHANGELOG.md 和各模块 AGENTS.md。
+### 7.19.4 集成路线
+- 当前模块独立可用，尚未集成到前端 CreatePage
+- 后续集成点：CreatePage 文案输入阶段的"开启小黑分镜"开关
