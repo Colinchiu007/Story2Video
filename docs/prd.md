@@ -1,5 +1,9 @@
 # 需求文档
 
+> **版本：** v1.2.0
+> **最后更新：** 2026-07-02
+> **变更摘要：** 补充资源限制、并发策略、会员配额定义、数据模型扩展、发布状态机、Feature Gate 迁移
+
 ## 1. 应用概述
 
 ### 1.1 应用名称
@@ -296,6 +300,21 @@ AI视频创作平台
 5. 若所有图片生成成功，系统自动合成视频
 6. 若有图片生成失败，系统停止自动合成，提示用户进入任务详情页面处理失败图片
 
+
+### 4.3.1 音频文件上传限制（新增）
+
+| 约束项 | 限制值 | 说明 |
+|--------|-------|------|
+| 文件大小上限 | 50 MB | 超过后提示「文件过大，请压缩后重试」 |
+| 音频时长上限 | 15 分钟 | 超过后提示「音频过长，请截取关键片段」 |
+| 支持格式 | wav / m4a / mp3 | 不支持的格式提示「仅支持 WAV、M4A、MP3 格式」 |
+| 分段模式单段上限 | 50 MB / 3 分钟 | 同上，额外限制时长与分段上限对齐 |
+
+**校验时机：**
+1. 上传时前端通过 `file.size` 校验文件大小
+2. 上传后后端使用 ffprobe 检测实际时长
+3. 超限文件拒绝入库，返回 HTTP 400 + 错误码 `AUDIO_FILE_EXCEEDED`
+
 ### 4.4 分段视频模式流程（新增）
 
 1. 用户输入多段文案或上传多个音频文件
@@ -367,6 +386,28 @@ AI视频创作平台
 - 滑动：后一张图片从侧面滑入
 - 无：直接切换
 
+
+### 4.8a 数据模型扩展 — VideoAsset / ScenePrompt（新增）
+
+为支持分段模式的混合输入（文案 + 音频），需扩展 `shared-models` 中的模型定义：
+
+**ScenePrompt 新增字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `audio_file` | `Optional[str]` | `None` | 分段模式下用户上传的音频文件路径/URL |
+| `subtitle_file` | `Optional[str]` | `None` | 自定义字幕文件路径（SRT/VTT），优先级高于自动生成 |
+
+**VideoAsset 新增字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `max_duration` | `Optional[float]` | `None` | 视频最大时长（秒），用于前端校验 |
+| `segment_mode` | `bool` | `False` | 是否为分段模式 |
+| `merged_audio_url` | `Optional[str]` | `None` | 合并后的完整音频 URL（多段合并时使用） |
+
+**变更流程：** 按 shared-models 冻结协议，需三组 ACK + 协调者批准后方可合并。
+
 ### 4.8 视频合成规则
 
 **视频时长**
@@ -382,6 +423,23 @@ AI视频创作平台
 - 按图片顺序依次合成
 - 每张图片对应的音频片段同步播放
 - 图片动态效果和切换特效按用户配置执行
+
+
+### 4.8.1 视频时长限制（新增）
+
+| 模式 | 最大时长 | 说明 |
+|------|---------|------|
+| 文案生成模式 | 10 分钟 | 音频时长即视频时长，超过 10 分钟时提示用户缩短文案 |
+| 音频生成模式 | 10 分钟 | 上传音频最长 15 分钟，但合成视频上限 10 分钟 |
+| 分段视频模式（单段） | 3 分钟 | 每段独立限制，超过 3 分钟提示用户拆分 |
+| 分段视频模式（合并后） | 10 分钟 | 所有分段时长之和不得超过 10 分钟 |
+
+**前端校验：**
+- 音频上传后即时校验时长，超过上限时禁用「生成」按钮并提示
+- 分段模式下实时计算总时长，接近上限时显示进度条预警
+
+**后端校验：**
+- Story2Video 合成前二次校验，超限返回 HTTP 400 + 错误码 `VIDEO_DURATION_EXCEEDED`
 
 ### 4.9 分段视频合并规则（新增）
 
@@ -414,6 +472,24 @@ AI视频创作平台
 - 排队中的任务显示当前排队位置和总排队数量
 - 显示预估剩余时间
 
+
+### 4.11 并发控制策略（新增）
+
+**核心原则：** 单用户同时只允许一个视频生成任务运行，多用户通过 orchestrator 统一调度。
+
+| 策略 | 说明 |
+|------|------|
+| 串行队列 | 每个用户提交的任务进入个人 FIFO 队列，前一个任务完成/失败后自动启动下一个 |
+| 全局并发上限 | 同时运行的视频合成任务总数由 orchestrator 控制（默认 1，4G ECS 约束） |
+| 用户级互斥 | 同一用户的第二个生成请求返回 HTTP 409 + 错误码 `TASK_CONFLICT` |
+| 排队状态 | 历史记录页显示排队位置（如「排在第 2 位，预计等待 5 分钟」） |
+| 优先级 | 付费用户 > 免费用户（同一用户内按提交时间 FIFO） |
+
+**orchestrator 集成：**
+- Story2Video 提交任务到 `POST /api/jobs/create`（通过 orchestrator）
+- orchestrator 维护全局任务队列，通过 `GET /api/jobs/status/:id` 轮询状态
+- 前端使用 SSE 或 3 秒间隔轮询获取任务进度
+
 ## 5. 异常与边界情况
 
 | 场景 | 处理方式 |
@@ -434,6 +510,15 @@ AI视频创作平台
 | 用户未选择图片切换特效 | 默认使用淡入淡出 |
 | 网络异常导致任务中断 | 任务状态标记为失败，用户可重新生成 |
 | 用户在排队中取消任务 | 任务从队列中移除，状态标记为已取消 |
+| 音频文件超过 50MB | 提示「文件过大，请压缩后重试」，拒绝上传 |
+| 音频时长超过 15 分钟 | 提示「音频过长，请截取关键片段」 |
+| 视频时长超过 10 分钟 | 提示用户缩短文案或拆分片段 |
+| 分段模式单段超过 3 分钟 | 提示用户拆分该段 |
+| 同一用户重复提交生成任务 | 返回 409，提示「有任务正在执行，请等待完成」 |
+| 并发超出全局上限 | 任务进入排队，显示排队位置 |
+| 会员配额用尽 | 生成按钮置灰，提示「今日生成次数已用完」 |
+| 发布平台 API 不可用 | 任务标记对应阶段失败，支持重试 |
+| 分段合并后总时长超限 | 提示用户删除片段或缩短单段时长 |
 
 ## 6. 验收标准
 
@@ -739,6 +824,24 @@ AI视频创作平台
 | 专业版 | ¥29.99 | 每日 50 次视频生成 | 批量分句、无水印 |
 | 企业版 | ¥99.99 | 每日 200 次视频生成 | 全部高级功能、优先支持 |
 
+
+### 7.18.2a 会员配额定义（新增）
+
+**「次」的精确定义：**
+
+- **1 次 = 1 次视频生成**（从「点击生成按钮」到「视频合成完成」为一次）
+- 下载视频**不消耗**配额
+- 发布到第三方平台**不消耗**配额
+- 重新生成单张图片**不消耗**配额（属于同一生成任务内的重试）
+- 合并分段视频**不消耗**配额（属于同一生成任务的后续步骤）
+- 分段模式下，每个子段的生成**各计 1 次**（例如 3 段 = 3 次）
+
+**配额周期：** 自然日（UTC+8 00:00:00 重置）
+
+**配额不足处理：**
+- 达到上限时「生成」按钮置灰，提示「今日生成次数已用完，明天再来」
+- 不支持购买额外次数或跨日结余
+
 ### 7.18.3 Feature Gate 映射
 
 | 功能 | 所需最低计划 | 说明 |
@@ -803,3 +906,148 @@ AI视频创作平台
 - 会员权益管理：Feature Gate 控制（voice_clone/batch_split/video_fixed_template）
 - 用量配额管理：QuotaWidget 展示 + CreatePage 预警提示
 - 详细设计见 [`docs/membership-design.md`](membership-design.md)
+
+
+
+## 7.20 发布状态机（新增）
+
+### 7.20.1 问题
+
+原文 PRD 中发布进度仅定义了「提交 → 下载 → 发布 → 完成」4 个粗粒度状态，无法精确反映发布流程中的中间环节。
+
+### 7.20.2 PublishStage 枚举（shared-models）
+
+需在 `shared-models/pipeline.py` 中新增 `PublishStage` 枚举：
+
+```python
+class PublishStage(str, Enum):
+    """发布任务生命周期阶段 — 10 级精细状态。"""
+
+    PENDING = "pending"               # 已提交，等待处理
+    DOWNLOADING = "downloading"       # 正在从 Story2Video 下载视频
+    DOWNLOAD_FAILED = "download_failed"  # 下载失败
+    UPLOADING = "uploading"           # 正在上传到目标平台
+    UPLOAD_FAILED = "upload_failed"   # 上传失败
+    SUBMITTING = "submitting"         # 已上传，正在提交投稿/审核
+    SUBMIT_FAILED = "submit_failed"   # 投稿失败
+    REVIEWING = "reviewing"           # 平台审核中（B站/小红书等）
+    PUBLISHED = "published"           # 发布成功
+    FAILED = "failed"                 # 最终失败（不可恢复）
+```
+
+### 7.20.3 状态转换图
+
+```
+PENDING → DOWNLOADING → UPLOADING → SUBMITTING → REVIEWING → PUBLISHED
+    ↓          ↓             ↓            ↓
+  FAILED  DOWNLOAD_FAILED UPLOAD_FAILED SUBMIT_FAILED → FAILED
+```
+
+### 7.20.4 前端展示映射
+
+| PublishStage | 前端文案 | 图标 |
+|-------------|---------|------|
+| `pending` | 排队中 | ⏳ |
+| `downloading` | 正在下载视频... | 📥 |
+| `uploading` | 正在上传到平台... | 📤 |
+| `submitting` | 正在提交投稿... | 📝 |
+| `reviewing` | 平台审核中 | 🔍 |
+| `published` | 已发布 | ✅ |
+| `*_failed` | 发布失败（点击重试） | ❌ |
+
+### 7.20.5 轮询策略
+- 前端每 3 秒调用 `GET /api/jobs/publish-status/:jobId`
+- `PUBLISHED` 或 `FAILED` 时停止轮询
+- `reviewing` 状态可降低轮询频率至 10 秒（平台审核通常需要分钟级时间）
+
+## 7.19 Ian 小黑分镜 Prompt 模板
+
+### 7.19.1 功能描述
+为视频生成的图片提示词阶段引入 Ian 小黑插画的分镜方法论，将抽象概念转换为结构化分镜描述，提升视觉叙事的一致性。
+
+### 7.19.2 模块设计
+
+**文件**: `src/lib/storyboard-prompt.ts` (客户端引擎), `src/services/storyboard-service.ts` (HTTP 客户端)
+
+客户端引擎 (`storyboard-prompt.ts`)：
+- **8 种构图模式**: 流程展示、系统局部、前后对比、角色状态、概念隐喻、方法分层、地图路径、迷你漫画
+- **14 个动态动作 + 23 个视觉物体**: 从概念→构图匹配→动作/对象选择→视觉场景组装
+- **三步隐喻引擎**: `threeStepMetaphor(concept)` 将抽象概念分解为构图+动作+视觉描述
+- **creativeLevel 控制**: 1-10 调节色彩、约束、关键词数量，适应不同内容风格
+- **多候选生成**: `generateCandidates(concept, count=3)` 批量生成去重分镜方案
+
+服务客户端 (`storyboard-service.ts`)：
+- **服务端模式**: 调用 prompt-engine `/v1/storyboard/compose` API（通过 orchestrator 路由）
+- **客户端降级**: 服务不可用时自动回退到客户端 `storyboard-prompt.ts`
+- **统一接口**: `storyboardCompose(scenes, fullText, strategy)` → `StoryboardResult[]`
+- **策略枚举**: `storyboardStrategies()` 获取可用策略列表
+
+### 7.19.3 API 接口
+
+| 函数 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `threeStepMetaphor(concept)` | string | MetaphorResult | 概念→分镜三步转换 |
+| `composeStoryboardPrompt(concept, options?)` | string, StoryboardOptions | StoryboardPrompt | 完整分镜 prompt |
+| `generateCandidates(concept, count=3)` | string, number | StoryboardPrompt[] | 批量候选+去重 |
+| `renderPromptString(prompt)` | StoryboardPrompt | string | 渲染为 LLM 输入 |
+
+### 7.19.4 集成状态
+
+**当前状态：已集成到 CreatePage 生成管线**
+
+CreatePage Step 4（图片提示词生成）新增 optional storyboard 路径：
+- 默认: `generateImagePrompts()` (v9.0 客户端策略，维持原行为)
+- 开启 storyboard: `storyboardCompose()` 替代，通过 localStorage 控制
+
+**启用方式（localStorage）：**
+| 键 | 值 | 效果 |
+|----|----|------|
+| `storyboard_enabled=1` | `"1"` | 开启 storyboard compose（默认关闭） |
+| `storyboard_strategy` | `"xiaohei_storyboard"` | 选择策略，默认小黑插画风 |
+| `storyboard_service=1` | `"1"` | 使用 prompt-engine API（默认客户端降级） |
+
+**架构：**
+```
+CreatePage → storyboardCompose(scenes, fullText, strategy)
+  ├─ [API 模式] fetch → prompt-engine /v1/storyboard/compose
+  │     └─ 失败降级 → storyboard-prompt.ts（客户端）
+  └─ [客户端模式] → storyboard-prompt.ts（客户端渲染）
+```
+
+**后续规划：**
+- 策略选择 UI（CreatePage 设置面板中的下拉选择）
+- 策略预览（显示当前构图的视觉描述）
+
+### 7.19.5 Feature Gate 迁移说明（新增）
+
+**问题：** 当前 storyboard 功能通过 `localStorage` 控制开关，仅适用于开发调试，不适用于生产环境。
+
+**迁移方案：** 将功能开关从 localStorage 迁移到 orchestrator 的 `feature_gates.yaml`。
+
+| 旧方案（localStorage） | 新方案（feature_gates.yaml） | 说明 |
+|----------------------|---------------------------|------|
+| `storyboard_enabled=1` | `storyboard` gate | 通过会员等级控制，不再由用户自行开启 |
+| `storyboard_strategy` | `storyboard_strategy` gate 参数 | 后端下发可用策略列表 |
+| `storyboard_service=1` | 自动降级 | API 不可用时自动回退客户端，无需开关 |
+
+**迁移步骤：**
+1. 在 `feature_gates.yaml` 中新增 `storyboard` gate（tier: 基础版）
+2. Story2Video 前端 `useFeatureGate('storyboard')` 替代 localStorage 读取
+3. 保留 localStorage 作为开发调试后门（仅 `NODE_ENV=development` 时生效）
+4. 完全移除生产环境对 localStorage 功能开关的依赖
+
+**同样需迁移的 localStorage 开关：**
+- `orchestrator_url` / `orchestrator_api_key` → 环境变量 `VITE_ORCHESTRATOR_URL`（生产环境）
+- `watermark_*` 系列 → 后端用户配置表（跨设备同步）
+
+---
+
+## 变更记录
+
+| 版本 | 日期 | 变更内容 |
+|------|------|---------|
+| v1.0.0 | 2026-06-01 | 初始版本 |
+| v1.1.0 | 2026-06-15 | 新增分段视频模式、音频生成模式、发布功能、会员系统、Ian 小黑分镜 |
+| v1.2.0 | 2026-07-02 | 审查报告修复：补充视频时长限制(4.8.1)、音频文件限制(4.3.1)、并发策略(4.11)、会员配额定义(7.18.2a)、数据模型扩展(4.8a)、发布状态机(7.20)、Feature Gate 迁移(7.19.5)；新增异常边界用例 |
+
+> **注：** 本文档仅描述产品需求，不包含实现状态。实现进度请查阅 CHANGELOG.md 和各模块 AGENTS.md。
