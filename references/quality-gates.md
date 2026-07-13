@@ -9,6 +9,7 @@
 | CI 测试 | `npm run test:ci` | `--bail=1` 首个失败即停 |
 | Lint | `npx biome lint` | 零错误 |
 | 变更日志 | `git diff CHANGELOG.md` | 更新至最新版本 |
+| 错误处理门禁 | `powershell -File scripts/quality-gate.ps1` | 零不安全解构 + 合理包装异常 |
 
 ## 阶段质量门禁
 
@@ -28,4 +29,4 @@
 
 | 日期 | 复盘文档 | 关键发现 |
 |------|---------|---------|
-| 2026-07-13 | `docs/postmortem-2026-07-13.md` | 不安全 supabase 解构模式（4次出现）、DB 同步阻塞本地保存、Profile 系统统一 |
+| 2026-07-13 (v1.6.0) | docs/postmortem-2026-07-13.md | 不安全 supabase 解构全面清零（5/5）+ VoiceCloneDialog 修复 + 门禁脚本 |

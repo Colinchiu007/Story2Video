@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Eye, EyeOff, Sparkles, Plus, Pencil, Trash2, Star, Check, Plug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -396,7 +396,8 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
 
   const loadSettings = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const authResult = await supabase.auth.getUser();
+  const user = authResult?.data?.user ?? null;
     let storedCfg: Partial<ApiConfig> = {};
     const stored = localStorage.getItem('api_config');
     if (stored) {

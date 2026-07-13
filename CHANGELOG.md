@@ -19,7 +19,8 @@ ull 时解构抛 TypeError，虽 localStorage 已写入但仍显示"保存失败
 
 #### 架构统一
 - **语音模型配置形式统一**: 将 TTS 标签页中独立的 MiMo/豆包 API Key 区块集成到 Profile 系统，
-  与推理/视频/图片模型使用一致的 enderProviderOptions 渲染
+  与推理/视频/图片模型使用一致的 
+enderProviderOptions 渲染
   - ProfileEditor 新增 TTS 专属字段（豆包音色 ID/名称存于 extra）
   - 向后兼容：旧展平字段自动迁移为 Profile
   - doSave 从活跃 TTS Profile 推导展平字段
@@ -28,6 +29,12 @@ ull 时解构抛 TypeError，虽 localStorage 已写入但仍显示"保存失败
 - 新增 	est:ci 脚本（--bail=1 早停）
 - 修复 package.json UTF-8 BOM 导致 PostCSS 解析失败
 - 新增 src/test-setup.ts 本地化 vitest setup 文件
+
+#### 代码审计
+- 不安全 supabase 解构全面清零（5 处全部修复：ApiSettingsDialog、BgmSettings、LoginPage、gallery、orchestrator-api）
+- 新增 scripts/quality-gate.ps1 自动化门禁脚本（3 项检测：raw throw error、不安全解构、instanceof Error 回退）
+- 注册质量门禁到 references/quality-gates.md
+
 # Story2Video — 变更日志
 
 ## [v1.5.2] — 2026-06-30

@@ -122,7 +122,8 @@ async function ensureLoggedIn(): Promise<string | null> {
   const cached = loadToken();
   if (cached) return cached.access_token;
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const authResult = await supabase.auth.getUser();
+  const user = authResult?.data?.user ?? null;
   if (!user?.id) return null;
 
   const username = deriveUsername(user.id);

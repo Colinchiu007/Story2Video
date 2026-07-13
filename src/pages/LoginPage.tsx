@@ -104,7 +104,8 @@ export default function LoginPage() {
       if (error) throw error;
 
       // Check if this is a first-time login (auto-registration)
-      const { data: { user } } = await supabase.auth.getUser();
+      const authResult = await supabase.auth.getUser();
+  const user = authResult?.data?.user ?? null;
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')

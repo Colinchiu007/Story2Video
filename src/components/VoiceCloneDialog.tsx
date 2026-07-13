@@ -161,7 +161,7 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
         contentType: file.type,
         cacheControl: '3600',
       });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       const { data } = supabase.storage.from('generated-audio').getPublicUrl(path);
       setAudioUrl(data.publicUrl);
 
@@ -172,8 +172,8 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
       };
       toast.success('音频上传成功');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '上传失败';
-      toast.error(`上传失败: ${msg}`);
+      const msg = extractErrorMessage(err);
+      toast.error(\上传失败: \\);
     }
   };
 
@@ -253,7 +253,7 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
     } catch (err) {
       const msg = extractErrorMessage(err);
       const prefix = cloneProvider === 'mimo' ? 'MiMo 音色保存失败' : '克隆失败';
-      toast.error(${prefix}: );
+      toast.error(`${prefix}: ${msg}`);
     } finally {
       setIsCloning(false);
     }

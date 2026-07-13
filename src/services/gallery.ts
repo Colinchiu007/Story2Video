@@ -11,7 +11,8 @@ export async function createGalleryImage(params: {
   status?: 'pending' | 'success' | 'failed';
   errorMessage?: string;
 }): Promise<GalleryImage> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const authResult = await supabase.auth.getUser();
+  const user = authResult?.data?.user ?? null;
   const { data, error } = await supabase
     .from('gallery_images')
     .insert({

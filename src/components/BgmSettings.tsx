@@ -126,7 +126,8 @@ export default function BgmSettings({ config, onChange, disabled }: BgmSettingsP
 
   const syncToDb = useCallback(async (lib: BgmLibraryItem[]) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const authResult = await supabase.auth.getUser();
+  const user = authResult?.data?.user ?? null;
       if (!user) return;
       await supabase.from('user_settings').upsert({
         user_id: user.id,
