@@ -3,6 +3,7 @@ import { Download, Package, Loader2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { createZip, downloadZip } from '@/lib/zip-utils';
+import { extractErrorMessage } from '@/services/api-config';
 
 export interface ExportItem {
   url: string;
@@ -80,7 +81,7 @@ export default function BatchExportButton({
       setDone(true);
       setTimeout(() => setDone(false), 3000);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '导出失败';
+      const msg = extractErrorMessage(err);
       toast.error(`导出失败: ${msg}`);
     } finally {
       setExporting(false);

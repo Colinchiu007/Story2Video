@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { extractErrorMessage } from '@/services/api-config';
 
 export interface VideoClipResult {
   blob: Blob;
@@ -210,7 +211,7 @@ export function useVideoClip(): UseVideoClipReturn {
     } catch (err) {
       const msg = err instanceof DOMException && err.name === 'AbortError'
         ? '剪辑已取消'
-        : err instanceof Error ? err.message : '剪辑失败';
+        : extractErrorMessage(err);
       setError(msg);
       setIsClipping(false);
       throw err;

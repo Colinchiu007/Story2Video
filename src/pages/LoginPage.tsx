@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Phone, MessageSquare, Eye, EyeOff, ArrowLeft, Check, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import UserAgreementDialog from '@/components/UserAgreementDialog';
 import WechatConfigDialog from '@/components/WechatConfigDialog';
+import { extractErrorMessage } from '@/services/api-config';
 
 /** 将 Supabase Auth 的英文错误消息映射为中文 */
 function localizeAuthError(msg: string): string {
@@ -77,7 +78,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({ phone: '+86' + phone });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       setOtpSent(true);
       setOtpCountdown(60);
       toast.success('验证码已发送');
@@ -101,7 +102,7 @@ export default function LoginPage() {
         token: otpCode,
         type: 'sms',
       });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
 
       // Check if this is a first-time login (auto-registration)
       const authResult = await supabase.auth.getUser();
@@ -139,7 +140,7 @@ export default function LoginPage() {
     try {
       const email = `${username.trim()}@miaoda.com`;
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       toast.success('登录成功');
       navigate('/', { replace: true });
     } catch (err) {
@@ -159,7 +160,7 @@ export default function LoginPage() {
     try {
       const email = `${username.trim()}@miaoda.com`;
       const { error } = await supabase.auth.signUp({ email, password });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       toast.success('注册成功，已自动登录');
       navigate('/', { replace: true });
     } catch (err) {
@@ -178,7 +179,7 @@ export default function LoginPage() {
         provider: 'wechat',
         options: { redirectTo: window.location.origin },
       });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       if (data.url) {
         window.location.href = data.url;
       } else {

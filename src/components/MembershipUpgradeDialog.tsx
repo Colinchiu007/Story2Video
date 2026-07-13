@@ -126,7 +126,7 @@ async function _apiFetch<T>(
     return {
       ok: false,
       status: 0,
-      text: err instanceof Error ? err.message : '网络错误',
+      text: extractErrorMessage(err),
     };
   }
 }

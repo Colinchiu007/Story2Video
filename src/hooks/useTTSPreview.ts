@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+﻿import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { generateTTS } from '@/services/tts';
 import { generateMimoTTS, getMimoVoiceNameFromId } from '@/services/tts-mimo';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
+import { extractErrorMessage } from '@/services/api-config';
 
 interface CachedTts {
   audioUrl: string;
@@ -78,7 +79,7 @@ export function useTTSPreview(options: UseTTSPreviewOptions): UseTTSPreviewRetur
     const { data, error } = await supabase.functions.invoke('short-speech-recognition', {
       body: { speech: speechBase64, len, format, rate: 16000, cuid: 'web-user-cuid' },
     });
-    if (error) throw error;
+    if (error) throw new Error(extractErrorMessage(error));
     if (data?.err_no !== 0) throw new Error(data?.err_msg || `语音识别失败 ${data?.err_no}`);
     return data.result?.[0] ?? '';
   }, [blobToBase64]);

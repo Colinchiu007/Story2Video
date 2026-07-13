@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
+import { extractErrorMessage } from '@/services/api-config';
 
 interface UseFileUploadsReturn {
   isUploading: boolean;
@@ -23,7 +24,7 @@ export function useFileUploads(): UseFileUploadsReturn {
         contentType: file.type,
         cacheControl: '3600',
       });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       const { data } = supabase.storage.from(bucket).getPublicUrl(path);
       return data.publicUrl;
     } finally {

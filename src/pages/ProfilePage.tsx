@@ -20,6 +20,7 @@ import {
 import { checkSentenceSplitterHealth } from '@/services/sentence-splitter-api';
 import { checkPromptEngineHealth } from '@/services/prompt-engine-api';
 import type { VideoTask } from '@/types';
+import { extractErrorMessage } from '@/services/api-config';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -43,7 +44,7 @@ export default function ProfilePage() {
       const all = await listVideoTasks(50);
       setTasks(all.filter((t) => t.video_url || t.merged_video_url));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '加载失败';
+      const msg = extractErrorMessage(err);
       toast.error(`加载作品失败: ${msg}`);
     } finally {
       setLoading(false);

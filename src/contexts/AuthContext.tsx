@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+﻿import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { supabase } from '@/db/supabase';
 import type { User } from '@supabase/supabase-js';
 import type { Profile, UserSettings } from '@/types';
 import { toast } from 'sonner';
+import { extractErrorMessage } from '@/services/api-config';
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -115,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -130,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       return { error: null };
     } catch (error) {
       return { error: error as Error };

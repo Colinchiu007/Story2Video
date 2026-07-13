@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { extractErrorMessage } from '@/services/api-config';
 
 interface AudioModeUploadProps {
   uploadedAudioUrl: string;
@@ -90,7 +91,7 @@ export default function AudioModeUpload({
               setAudioText(text);
               toast.success('语音识别完成');
             } catch (err) {
-              const msg = err instanceof Error ? err.message : '识别失败';
+              const msg = extractErrorMessage(err);
               toast.error('语音识别失败: ' + msg);
             } finally {
               setIsRecognizingAudio(false);

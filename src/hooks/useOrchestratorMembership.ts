@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { extractErrorMessage } from '@/services/api-config';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ async function _apiFetch<T>(
     }
     return { ok: true, status: res.status, data: text ? JSON.parse(text) : undefined };
   } catch (err) {
-    return { ok: false, status: 0, text: err instanceof Error ? err.message : '网络错误' };
+    return { ok: false, status: 0, text: extractErrorMessage(err) };
   }
 }
 
@@ -250,7 +251,7 @@ export function useOrchestratorMembership(
         _clearToken();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '获取会员信息失败';
+      const msg = extractErrorMessage(err);
       setError(msg);
     } finally {
       if (mountedRef.current) setLoading(false);

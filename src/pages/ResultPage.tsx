@@ -11,6 +11,7 @@ import { getSubtitleStyleClasses } from '@/components/SubtitleSettings';
 import ShareButton from '@/components/ShareButton';
 import VideoClipEditor from '@/components/VideoClipEditor';
 import type { VideoTask } from '@/types';
+import { extractErrorMessage } from '@/services/api-config';
 
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,7 +76,7 @@ export default function ResultPage() {
       setPublishSuccess(`已发布到 ${currentPlatformLabel}！任务ID: ${result.taskId}`);
       toast.success(`视频已提交到 ${currentPlatformLabel} 发布队列`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '发布失败';
+      const msg = extractErrorMessage(err);
       setPublishError(msg);
       toast.error(msg);
     } finally {
@@ -140,7 +141,7 @@ export default function ResultPage() {
       setChildren((prev) => prev.map((c) => (c.id === child.id ? { ...c, video_id: res.videoId, status: res.status } : c)));
       toast.success('重新生成任务已提交');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '重新生成失败';
+      const msg = extractErrorMessage(err);
       toast.error(msg);
     } finally {
       setRegeneratingId(null);

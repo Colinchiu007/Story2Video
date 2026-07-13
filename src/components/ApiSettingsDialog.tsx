@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import type { ModelConfig, ModelProviderConfig, CustomApiProfile } from '@/types';
-import { invokeFunction } from '@/services/api-config';
+import { extractErrorMessage, invokeFunction } from '@/services/api-config';
 import ApiHelpDialog from './ApiHelpDialog';
 import ImagePromptPreviewDialog from './ImagePromptPreviewDialog';
 
@@ -411,7 +411,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
           .select('*')
           .eq('user_id', user.id)
           .maybeSingle();
-        if (error) throw error;
+        if (error) throw new Error(extractErrorMessage(error));
         if (data) {
           storedCfg = {
             aiSource: (data.ai_source as 'builtin' | 'custom') ?? 'builtin',
@@ -685,7 +685,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
             doubao_voice_name: doubaoVoiceName.trim() || null,
             model_config: effectiveModelConfig,
           }, { onConflict: 'user_id' });
-          if (error) throw error;
+          if (error) throw new Error(extractErrorMessage(error));
         }
       } catch (syncErr) {
         // DB sync failure is non-critical; log but don't block
@@ -705,7 +705,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
       }
     } catch (err) {
       // localStorage itself failed (e.g. quota exceeded) — critical
-      const msg = err instanceof Error ? err.message : '保存失败';
+      const msg = extractErrorMessage(err);
       toast.error(`保存失败: ${msg}`);
     } finally {
       setIsSaving(false);

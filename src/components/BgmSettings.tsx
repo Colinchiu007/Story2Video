@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import { getAllBgmTracks, saveCustomBgmTracks, type BgmTrack } from '@/lib/bgm-library';
+import { extractErrorMessage } from '@/services/api-config';
 
 export interface BgmConfig {
   enabled: boolean;
@@ -233,7 +234,7 @@ export default function BgmSettings({ config, onChange, disabled }: BgmSettingsP
         cacheControl: '3600',
       });
       window.clearInterval(progressTimer);
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       const { data } = supabase.storage.from('generated-audio').getPublicUrl(path);
       const rawName = file.name.replace(/\.[^/.]+$/, '');
       const newItem: BgmLibraryItem = {
@@ -249,7 +250,7 @@ export default function BgmSettings({ config, onChange, disabled }: BgmSettingsP
       onChange({ ...config, url: data.publicUrl, name: newItem.name });
       toast.success('背景音乐上传成功');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '上传失败';
+      const msg = extractErrorMessage(err);
       toast.error(`上传失败: ${msg}`);
     } finally {
       setIsUploading(false);
@@ -288,7 +289,7 @@ export default function BgmSettings({ config, onChange, disabled }: BgmSettingsP
         cacheControl: '3600',
       });
       window.clearInterval(progressTimer);
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       const { data } = supabase.storage.from('generated-audio').getPublicUrl(path);
       const rawName = file.name.replace(/\.[^/.]+$/, '');
       const newName = truncateName(rawName, 10);
@@ -309,7 +310,7 @@ export default function BgmSettings({ config, onChange, disabled }: BgmSettingsP
 
       toast.success('音频替换成功');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '替换失败';
+      const msg = extractErrorMessage(err);
       toast.error(`替换失败: ${msg}`);
     } finally {
       setIsUploading(false);

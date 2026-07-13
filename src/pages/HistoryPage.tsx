@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { listVideoTasks, deleteVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video-generation';
 import { supabase } from '@/db/supabase';
 import type { VideoTask } from '@/types';
+import { extractErrorMessage } from '@/services/api-config';
 
 /** Effective status that considers timeout for stuck tasks */
 type EffectiveStatus = 'completed' | 'failed' | 'processing';
@@ -128,7 +129,7 @@ export default function HistoryPage() {
       setTasks((prev) => prev.filter((t) => t.id !== deleteTarget.id && t.parent_id !== deleteTarget.id));
       toast.success('已删除');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '删除失败';
+      const msg = extractErrorMessage(err);
       toast.error(`删除失败: ${msg}`);
     } finally {
       setDeleting(false);
@@ -220,7 +221,7 @@ export default function HistoryPage() {
         loadTasks();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '重试失败';
+      const msg = extractErrorMessage(err);
       toast.error(`重试失败: ${msg}`);
     } finally {
       setRetryingId(null);

@@ -17,7 +17,7 @@ import { createVideoTask, startTextToVideo, startImageToVideo, startRemixVideo }
 import { generateTTS } from '@/services/tts';
 import { generateMimoTTS, getMimoVoiceNameFromId } from '@/services/tts-mimo';
 import { getUserVoices } from '@/services/voice-clone';
-import { useJimengForVideo, batchParallel, useViduForVideo, isImageGenerationAvailable } from '@/services/api-config';
+import { extractErrorMessage, useJimengForVideo, batchParallel, useViduForVideo, isImageGenerationAvailable } from '@/services/api-config';
 import { startImageGeneration, queryImageGeneration } from '@/services/image-generation';
 import { createGalleryImage } from '@/services/gallery';
 import { createSlideshowVideo, mapSubtitleStyle, getVideoExtension } from '@/lib/slideshow';
@@ -358,7 +358,7 @@ export default function CreatePage() {
             audioUrl = await uploadMixedAudio(mixedBlobUrl, uploadToStorage);
             toast.success('背景音乐混音完成');
           } catch (err) {
-            const msg = err instanceof Error ? err.message : '混音失败';
+            const msg = extractErrorMessage(err);
             toast.warning(`背景音乐混音失败: ${msg}，将使用原音频`);
           }
         }
@@ -495,7 +495,7 @@ export default function CreatePage() {
             updateStep(bgmStepIndex, 'completed');
             toast.success('背景音乐混音完成');
           } catch (err) {
-            const msg = err instanceof Error ? err.message : '混音失败';
+            const msg = extractErrorMessage(err);
             updateStep(bgmStepIndex, 'failed', msg);
             toast.warning(`背景音乐混音失败: ${msg}，将使用原音频`);
             mixedAudioUrl = audioUrl;
@@ -828,7 +828,7 @@ export default function CreatePage() {
                   segAudioUrl = ttsResult.audioUrl;
                   segAudioDuration = ttsResult.audioLength;
                 } catch (err) {
-                  const msg = err instanceof Error ? err.message : '语音合成失败';
+            const msg = extractErrorMessage(err);
                   console.error(`[Batch] Segment ${child.index} TTS failed:`, msg);
                 }
               }

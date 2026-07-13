@@ -1,4 +1,5 @@
 import { supabase } from '@/db/supabase';
+import { extractErrorMessage } from './api-config';
 
 // ── Platform registry ────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ async function apiFetch<T>(
     }
     return { ok: true, status: res.status, data: text ? JSON.parse(text) : undefined };
   } catch (err) {
-    return { ok: false, status: 0, text: err instanceof Error ? err.message : 'Network error' };
+    return { ok: false, status: 0, text: extractErrorMessage(err) };
   }
 }
 

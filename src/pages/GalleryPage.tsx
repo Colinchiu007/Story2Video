@@ -18,6 +18,7 @@ import { buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
 import type { GalleryImage, VideoTask } from '@/types';
 import ShareButton from '@/components/ShareButton';
 import type { SubtitleSegment } from '@/lib/slideshow';
+import { extractErrorMessage } from '@/services/api-config';
 
 const REGENERATING_STORAGE_KEY = 'gallery_regenerating_tasks';
 
@@ -243,7 +244,7 @@ export default function GalleryPage() {
       toast.success('图片已删除');
       loadData();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '删除失败';
+      const msg = extractErrorMessage(err);
       toast.error(`删除失败: ${msg}`);
     }
   };
@@ -267,7 +268,7 @@ export default function GalleryPage() {
         contentType: file.type,
         cacheControl: '3600',
       });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       const { data } = supabase.storage.from('generated-media').getPublicUrl(path);
       // 只替换图片文件，保留原有的 prompt 和 original_prompt
       await updateGalleryImage(imageId, {
@@ -276,7 +277,7 @@ export default function GalleryPage() {
       toast.success('图片替换成功');
       loadData();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '替换失败';
+      const msg = extractErrorMessage(err);
       toast.error(`替换失败: ${msg}`);
     } finally {
       setIsReplacingImage(null);
@@ -426,7 +427,7 @@ export default function GalleryPage() {
         contentType: file.type,
         cacheControl: '3600',
       });
-      if (error) throw error;
+      if (error) throw new Error(extractErrorMessage(error));
       const { data } = supabase.storage.from('generated-media').getPublicUrl(path);
       const nextIndex = images.length;
       await createGalleryImage({
@@ -439,7 +440,7 @@ export default function GalleryPage() {
       toast.success('图片上传成功');
       loadData();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '上传失败';
+      const msg = extractErrorMessage(err);
       toast.error(`上传失败: ${msg}`);
     } finally {
       setIsUploadingImage(false);
