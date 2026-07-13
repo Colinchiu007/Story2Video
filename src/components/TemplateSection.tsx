@@ -2,6 +2,7 @@ import React from 'react';
 import { LayoutTemplate } from 'lucide-react';
 import VideoTemplatePicker, { TemplateSelectButton } from '@/components/VideoTemplatePicker';
 import { getTemplateById } from '@/lib/template-library';
+import type { VideoTemplate } from '@/types/template';
 
 interface TemplateSectionProps {
   selectedTemplateId: string | undefined;
@@ -31,7 +32,7 @@ export default function TemplateSection({
         open={templateOpen}
         onOpenChange={setTemplateOpen}
         selectedId={selectedTemplateId}
-        onSelect={handleTemplateSelect}
+        onSelect={(template: VideoTemplate) => handleTemplateSelect(template.id)}
       />
     </div>
   );

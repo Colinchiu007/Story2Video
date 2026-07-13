@@ -2,16 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Film, Clock, Eye, Download, Grid3X3, List,
-  Calendar, Trash2, LogOut, Settings, Play,
+  Calendar, Trash2, LogOut, Settings, Play, Server, CheckCircle, XCircle, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { listVideoTasks } from '@/services/video-generation';
+import {
+  getSentenceSplitterUrl, setSentenceSplitterUrl,
+  getPromptEngineUrl, setPromptEngineUrl,
+} from '@/services/external-config';
+import { checkSentenceSplitterHealth } from '@/services/sentence-splitter-api';
+import { checkPromptEngineHealth } from '@/services/prompt-engine-api';
 import type { VideoTask } from '@/types';
 
 export default function ProfilePage() {
@@ -20,6 +27,12 @@ export default function ProfilePage() {
   const [tasks, setTasks] = useState<VideoTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // External service configuration
+  const [splitterUrl, setSplitterUrl] = useState(getSentenceSplitterUrl());
+  const [promptUrl, setPromptUrl] = useState(getPromptEngineUrl());
+  const [splitterStatus, setSplitterStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [promptStatus, setPromptStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
 
   useEffect(() => {
     loadTasks();
@@ -85,6 +98,38 @@ export default function ProfilePage() {
         {labels[status] || status}
       </Badge>
     );
+  };
+
+  const handleSaveSplitterUrl = () => {
+    setSentenceSplitterUrl(splitterUrl);
+    toast.success('分句服务地址已保存');
+  };
+
+  const handleSavePromptUrl = () => {
+    setPromptEngineUrl(promptUrl);
+    toast.success('提示词引擎地址已保存');
+  };
+
+  const handleTestSplitter = async () => {
+    setSplitterStatus('testing');
+    const result = await checkSentenceSplitterHealth();
+    setSplitterStatus(result.ok ? 'ok' : 'error');
+    if (result.ok) {
+      toast.success(`分句服务连接成功 (tier: ${result.tier})`);
+    } else {
+      toast.error(`分句服务连接失败: ${result.error}`);
+    }
+  };
+
+  const handleTestPrompt = async () => {
+    setPromptStatus('testing');
+    const result = await checkPromptEngineHealth();
+    setPromptStatus(result.ok ? 'ok' : 'error');
+    if (result.ok) {
+      toast.success('提示词引擎连接成功');
+    } else {
+      toast.error(`提示词引擎连接失败: ${result.error}`);
+    }
   };
 
   if (loading) {
@@ -165,6 +210,65 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* External Services Configuration */}
+      <Card className="border border-border bg-card mb-6">
+        <CardContent className="p-6">
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+            <Server className="h-5 w-5 text-primary" />
+            外部服务配置
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            配置外部 Python 服务地址，启用 LLM 增强分句和提示词优化。留空则使用本地 TS 实现。
+          </p>
+          <div className="space-y-4">
+            {/* Sentence Splitter */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+              <div className="flex-1 w-full">
+                <label className="text-sm font-medium mb-1 block">智能分句服务</label>
+                <Input
+                  placeholder="http://localhost:8014"
+                  value={splitterUrl}
+                  onChange={(e) => setSplitterUrl(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-1 sm:mt-5">
+                <Button size="sm" variant="outline" onClick={handleSaveSplitterUrl}>
+                  保存
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleTestSplitter} disabled={splitterStatus === 'testing'}>
+                  {splitterStatus === 'testing' ? <Loader2 className="h-4 w-4 animate-spin" /> : '测试'}
+                </Button>
+                {splitterStatus === 'ok' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                {splitterStatus === 'error' && <XCircle className="h-4 w-4 text-red-500" />}
+              </div>
+            </div>
+            {/* Prompt Engine */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+              <div className="flex-1 w-full">
+                <label className="text-sm font-medium mb-1 block">提示词引擎</label>
+                <Input
+                  placeholder="http://localhost:8013"
+                  value={promptUrl}
+                  onChange={(e) => setPromptUrl(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-1 sm:mt-5">
+                <Button size="sm" variant="outline" onClick={handleSavePromptUrl}>
+                  保存
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleTestPrompt} disabled={promptStatus === 'testing'}>
+                  {promptStatus === 'testing' ? <Loader2 className="h-4 w-4 animate-spin" /> : '测试'}
+                </Button>
+                {promptStatus === 'ok' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                {promptStatus === 'error' && <XCircle className="h-4 w-4 text-red-500" />}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Works Gallery */}
       <div className="flex items-center justify-between mb-4">

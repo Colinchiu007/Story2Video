@@ -281,8 +281,8 @@ export default function PublishDialog({ open, onOpenChange, videoUrl, taskTitle 
                 <p className="text-sm font-medium text-success">发布成功</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   视频已提交到 {platformLabel}，可在该平台查看发布状态。
-                  {progress?.output?.publish_id && (
-                    <span className="block mt-0.5">发布 ID: {progress.output.publish_id as string}</span>
+                  {!!progress?.output?.publish_id && (
+                    <span className="block mt-0.5">发布 ID: {String(progress.output.publish_id)}</span>
                   )}
                 </p>
               </div>

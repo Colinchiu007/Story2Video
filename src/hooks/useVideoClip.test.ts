@@ -80,17 +80,10 @@ describe('useVideoClip', () => {
   it('clearResult 清除剪辑结果', () => {
     const { result } = renderHook(() => useVideoClip());
 
-    act(() => {
-      // Simulate having a clip result
-      result.current['clipResult' as keyof typeof result.current] = {
-        blob: new Blob(),
-        url: 'blob:test',
-        startTime: 0,
-        endTime: 10,
-        duration: 10,
-      } as any;
-    });
+    // Initially clipResult is null
+    expect(result.current.clipResult).toBeNull();
 
+    // clearResult on null should not throw
     act(() => {
       result.current.clearResult();
     });

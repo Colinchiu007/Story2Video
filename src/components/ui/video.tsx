@@ -13,6 +13,7 @@
 import {
     BigPlayButton,
     ControlBar,
+    Player,
     PlayToggle,
     CurrentTimeDisplay,
     TimeDivider,
@@ -102,7 +103,7 @@ display: block;
         <TimeDivider key="time-divider" />
         <DurationDisplay key="duration-display" />
         <ProgressControl key="progress-control" />
-        <FullscreenToggle key="fullscreen-toggle" />
+        <FullscreenToggle key="fullscreen-toggle" actions={{} as any} />
         </ControlBar>
         <BigPlayButton position="center" />
     </Player>

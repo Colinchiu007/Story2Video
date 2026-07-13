@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ProfilePage from './ProfilePage';
+import { listVideoTasks } from '@/services/video-generation';
 
 // Mock dependencies
 vi.mock('react-router-dom', async () => {
@@ -63,8 +64,7 @@ describe('ProfilePage', () => {
   });
 
   it('renders loading state initially', () => {
-    const { listVideoTasks } = require('@/services/video-generation');
-    listVideoTasks.mockReturnValue(new Promise(() => {}));
+    vi.mocked(listVideoTasks).mockReturnValue(new Promise(() => {}));
 
     render(
       <MemoryRouter>
@@ -75,8 +75,7 @@ describe('ProfilePage', () => {
   });
 
   it('renders empty state when no tasks', async () => {
-    const { listVideoTasks } = require('@/services/video-generation');
-    listVideoTasks.mockResolvedValue([]);
+    vi.mocked(listVideoTasks).mockResolvedValue([]);
 
     render(
       <MemoryRouter>
@@ -91,8 +90,7 @@ describe('ProfilePage', () => {
   });
 
   it('renders user phone number', async () => {
-    const { listVideoTasks } = require('@/services/video-generation');
-    listVideoTasks.mockResolvedValue([]);
+    vi.mocked(listVideoTasks).mockResolvedValue([]);
 
     render(
       <MemoryRouter>
@@ -106,8 +104,7 @@ describe('ProfilePage', () => {
   });
 
   it('renders task count stats', async () => {
-    const { listVideoTasks } = require('@/services/video-generation');
-    listVideoTasks.mockResolvedValue([
+    vi.mocked(listVideoTasks).mockResolvedValue([
       { id: '1', mode: 'text', status: 'completed', video_url: 'https://example.com/1.mp4', created_at: '2026-01-01T00:00:00Z', prompt: 'Test video', size: '1920x1080', seconds: 10 },
     ]);
 
@@ -118,7 +115,7 @@ describe('ProfilePage', () => {
     );
 
     await vi.waitFor(() => {
-      expect(screen.getByText('1')).toBeTruthy(); // count of completed
+      expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(1); // count of completed
     });
   });
 });

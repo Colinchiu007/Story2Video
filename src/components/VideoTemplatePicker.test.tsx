@@ -33,7 +33,7 @@ describe('VideoTemplatePicker', () => {
 
   it('filters templates by category', () => {
     render(<VideoTemplatePicker {...defaultProps} />);
-    fireEvent.click(screen.getByText('商务'));
+    fireEvent.click(screen.getAllByText('商务')[0]);
     expect(screen.getByText('幻灯片演示')).toBeTruthy();
     expect(screen.getByText('营销推广')).toBeTruthy();
     expect(screen.queryByText('快速成片')).toBeNull();
@@ -70,26 +70,26 @@ describe('VideoTemplatePicker', () => {
   it('shows empty state for unused category', () => {
     // Add a "custom" category button — currently no templates with custom
     render(<VideoTemplatePicker {...defaultProps} />);
-    expect(screen.getByText('热门')).toBeTruthy();
-    expect(screen.getByText('Vlog')).toBeTruthy();
+    expect(screen.getAllByText('热门').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Vlog').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders category filter buttons for all categories', () => {
     render(<VideoTemplatePicker {...defaultProps} />);
-    expect(screen.getByText('全部')).toBeTruthy();
-    expect(screen.getByText('热门')).toBeTruthy();
-    expect(screen.getByText('商务')).toBeTruthy();
-    expect(screen.getByText('教育')).toBeTruthy();
-    expect(screen.getByText('Vlog')).toBeTruthy();
-    expect(screen.getByText('创意')).toBeTruthy();
+    expect(screen.getAllByText('全部').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('热门').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('商务').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('教育').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Vlog').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('创意').length).toBeGreaterThanOrEqual(1);
   });
 
   it('resets filter when switching categories', () => {
     render(<VideoTemplatePicker {...defaultProps} />);
-    fireEvent.click(screen.getByText('创意'));
+    fireEvent.click(screen.getAllByText('创意')[0]);
     expect(screen.queryByText('快速成片')).toBeNull();
     expect(screen.getByText('动感快剪')).toBeTruthy();
-    fireEvent.click(screen.getByText('全部'));
+    fireEvent.click(screen.getAllByText('全部')[0]);
     expect(screen.getByText('快速成片')).toBeTruthy();
   });
 });

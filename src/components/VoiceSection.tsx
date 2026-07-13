@@ -13,7 +13,7 @@ interface VoiceSectionProps {
   saveLastVoice: (id: string) => void;
   doubaoVoice: { id: string; name: string } | null;
   userVoices: UserVoice[];
-  handleSelectClonedVoice: (voice: UserVoice) => void;
+  handleSelectClonedVoice: (voiceId: string, name: string) => void;
   speed: number;
   setSpeed: (v: number) => void;
   vol: number;

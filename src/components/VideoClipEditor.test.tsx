@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import VideoClipEditor from './VideoClipEditor';
+import { useVideoClip } from '@/hooks/useVideoClip';
 
 // Mock shadcn/ui components
 vi.mock('@/components/ui/button', () => ({
@@ -55,25 +56,24 @@ vi.mock('@/hooks/useVideoClip', () => {
     error: null,
     clipResult: null,
   };
-  return {
-    useVideoClip: () => ({
-      ...mockState,
-      setStartTime: vi.fn((t: number) => { mockState.startTime = t; }),
-      setEndTime: vi.fn((t: number) => { mockState.endTime = t; }),
-      setDuration: vi.fn((d: number) => { mockState.duration = d; }),
-      clipVideo: vi.fn().mockResolvedValue({
-        blob: new Blob(),
-        url: 'blob:test-clip',
-        startTime: mockState.startTime,
-        endTime: mockState.endTime,
-        duration: mockState.endTime - mockState.startTime,
-      }),
-      reset: vi.fn(() => {
-        mockState = { startTime: 0, endTime: 30, duration: 30, isClipping: false, progress: 0, error: null, clipResult: null };
-      }),
-      clearResult: vi.fn(),
+  const mockFn = vi.fn(() => ({
+    ...mockState,
+    setStartTime: vi.fn((t: number) => { mockState.startTime = t; }),
+    setEndTime: vi.fn((t: number) => { mockState.endTime = t; }),
+    setDuration: vi.fn((d: number) => { mockState.duration = d; }),
+    clipVideo: vi.fn().mockResolvedValue({
+      blob: new Blob(),
+      url: 'blob:test-clip',
+      startTime: mockState.startTime,
+      endTime: mockState.endTime,
+      duration: mockState.endTime - mockState.startTime,
     }),
-  };
+    reset: vi.fn(() => {
+      mockState = { startTime: 0, endTime: 30, duration: 30, isClipping: false, progress: 0, error: null, clipResult: null };
+    }),
+    clearResult: vi.fn(),
+  }));
+  return { useVideoClip: mockFn };
 });
 
 describe('VideoClipEditor Component', () => {
@@ -134,7 +134,7 @@ describe('VideoClipEditor Component', () => {
 
   it('clips disables button when clipping is in progress', () => {
     // Re-mock with isClipping=true
-    vi.mocked(require('@/hooks/useVideoClip').useVideoClip).mockReturnValueOnce({
+    vi.mocked(useVideoClip).mockReturnValueOnce({
       startTime: 0,
       endTime: 30,
       duration: 30,
@@ -162,7 +162,7 @@ describe('VideoClipEditor Component', () => {
   });
 
   it('shows error message when clip fails', () => {
-    vi.mocked(require('@/hooks/useVideoClip').useVideoClip).mockReturnValueOnce({
+    vi.mocked(useVideoClip).mockReturnValueOnce({
       startTime: 0,
       endTime: 30,
       duration: 30,
@@ -201,7 +201,7 @@ describe('VideoClipEditor Component', () => {
   });
 
   it('shows progress bar when clipping', () => {
-    vi.mocked(require('@/hooks/useVideoClip').useVideoClip).mockReturnValueOnce({
+    vi.mocked(useVideoClip).mockReturnValueOnce({
       startTime: 0,
       endTime: 30,
       duration: 30,

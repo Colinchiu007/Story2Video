@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import WatermarkPicker from './WatermarkPicker';
+import { saveWatermarkConfig } from '@/lib/watermark';
 
 // Mock the watermark lib module
 vi.mock('@/lib/watermark', () => {
@@ -174,7 +175,7 @@ describe('WatermarkPicker Component', () => {
   });
 
   it('saves config and closes dialog when save is clicked', () => {
-    const { saveWatermarkConfig } = require('@/lib/watermark');
+    vi.mocked(saveWatermarkConfig);
     render(<WatermarkPicker open={true} onOpenChange={mockOnOpenChange} />);
 
     const saveBtn = screen.getByText('保存设置');

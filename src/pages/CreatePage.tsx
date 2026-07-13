@@ -30,8 +30,8 @@ import SubtitleSettings from '@/components/SubtitleSettings';
 import VideoTemplatePicker, { TemplateSelectButton } from '@/components/VideoTemplatePicker';
 import EffectPicker, { EffectSettingsButton } from '@/components/EffectPicker';
 import { getTemplateById } from '@/lib/template-library';
-import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
-import { generateImagePrompts } from '@/lib/history-prompt';
+import { splitTextToScenes, splitTextToScenesSmart, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
+import { generateImagePrompts, generateImagePromptsSmart } from '@/lib/history-prompt';
 import { mixAudio, uploadMixedAudio } from '@/lib/audio-mixer';
 import type { CreateMode, UserVoice } from '@/types';
 import type { VideoTemplate } from '@/types/template';
@@ -187,7 +187,7 @@ export default function CreatePage() {
     try {
       const id = getDoubaoVoiceId();
       if (id) {
-        setDoubaoVoice({ id, name: getDoubaoVoiceName() });
+        setDoubaoVoice({ id, name: getDoubaoVoiceName() || id });
       } else {
         setDoubaoVoice(null);
       }
@@ -202,9 +202,9 @@ export default function CreatePage() {
     localStorage.setItem('last_voice_id', id);
   }, []);
 
-  const handleSelectClonedVoice = useCallback((voice: UserVoice) => {
-    setVoiceId(voice.voice_id ?? voice.id);
-    saveLastVoice(voice.voice_id ?? voice.id);
+  const handleSelectClonedVoice = useCallback((voiceId: string, _name: string) => {
+    setVoiceId(voiceId);
+    saveLastVoice(voiceId);
   }, [setVoiceId, saveLastVoice]);
 
   const handleTemplateSelect = useCallback((templateId: string | undefined) => {
@@ -329,7 +329,7 @@ export default function CreatePage() {
       // Step 3: Segment text by semantics ONLY when "audio duration" mode is selected
       let segments: string[] = [];
       if (isAudioDurationMode && audioText.trim()) {
-        segments = splitTextToScenes(audioText.trim());
+        segments = await splitTextToScenesSmart(audioText.trim());
       }
       const totalSegments = segments.length > 0 ? segments.length : 1;
       const totalSeconds = isAudioDurationMode
@@ -485,14 +485,14 @@ export default function CreatePage() {
         // Step 3: Text segmentation with independent text-segmentation module
         const segIndex = bgmStepIndex >= 0 ? 3 : 2;
         updateStep(segIndex, 'active');
-        const imgSegments = splitTextToScenes(audioText.trim(), { targetCount: imageCount });
+        const imgSegments = await splitTextToScenesSmart(audioText.trim(), { targetCount: imageCount });
         const actualCount = imgSegments.length;
         updateStep(segIndex, 'completed', `语义分断为 ${actualCount} 段 (text-seg v1.0)`);
 
         // Step 4: Generate image prompts with v9.0 strategy (client-side, no LLM)
         const optIndex = segIndex + 1;
         updateStep(optIndex, 'active');
-        const optimizedPrompts = generateImagePrompts(imgSegments, audioText.trim());
+        const optimizedPrompts = await generateImagePromptsSmart(imgSegments, audioText.trim());
         updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
         toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 杢`);
 
@@ -821,8 +821,8 @@ export default function CreatePage() {
               }).eq('id', child.id);
 
               // Generate image prompts
-              const segSegments = splitTextToScenes(child.text, { targetCount: segImageCount });
-              const segPrompts = generateImagePrompts(segSegments, child.text);
+              const segSegments = await splitTextToScenesSmart(child.text, { targetCount: segImageCount });
+              const segPrompts = await generateImagePromptsSmart(segSegments, child.text);
 
               // Pre-create gallery image records
               const galleryRecords = await Promise.all(

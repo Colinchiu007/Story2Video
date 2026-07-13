@@ -48,6 +48,7 @@ export interface PublishProgress {
   message: string;
   percent: number;
   error?: string;
+  output?: Record<string, unknown>;
 }
 
 // ── Token & Credential Management ─────────────────────────────────────────
@@ -287,4 +288,3 @@ function mapStatus(s: string): PublishProgress['status'] {
       return 'pending';
   }
 }
-                                  

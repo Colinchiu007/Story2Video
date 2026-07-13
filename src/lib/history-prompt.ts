@@ -1,4 +1,6 @@
 import { splitTextToScenes } from './text-segmentation';
+import { isPromptEngineAvailable } from '@/services/external-config';
+import { apiStoryboardCompose, apiBatchOptimize } from '@/services/prompt-engine-api';
 
 /**
  * 历史文章生图提示词优化系统 v10.0（VisionCraft整合版）
@@ -1185,6 +1187,53 @@ export function getSegmentDebugInfo(
  */
 export function getStrategyVersion(): string {
   return HISTORY_PROMPT_VERSION;
+}
+
+/**
+ * 智能图片提示词生成（API-First + TS-Fallback）
+ *
+ * 当 prompt-engine 服务可用时：
+ * 1. 优先调用 /v1/storyboard/compose（专为 Story2Video 设计的分镜合成）
+ * 2. 若 storyboard 失败，降级到本地生成 + /v1/batch 批量优化
+ * 3. 若批量优化也失败，完全降级到本地 TS 实现
+ *
+ * @param segments 分割后的文本段
+ * @param fullText 完整原文
+ * @returns 优化后的提示词数组
+ */
+export async function generateImagePromptsSmart(
+  segments: string[],
+  fullText: string,
+): Promise<string[]> {
+  if (segments.length === 0) return [];
+
+  if (isPromptEngineAvailable()) {
+    // 策略 1：使用 /v1/storyboard/compose
+    try {
+      const result = await apiStoryboardCompose(segments, fullText);
+      if (result.prompts && result.prompts.length > 0) {
+        return result.prompts;
+      }
+    } catch {
+      // storyboard compose 失败，尝试策略 2
+    }
+
+    // 策略 2：本地生成 + 批量优化
+    try {
+      const localPrompts = generateImagePrompts(segments, fullText);
+      const optimized = await apiBatchOptimize(
+        localPrompts.map((p) => ({ prompt: p, platform: 'generic' })),
+      );
+      if (optimized.length > 0) {
+        return optimized.map((r) => r.optimized_prompt);
+      }
+    } catch {
+      // 完全降级到本地
+    }
+  }
+
+  // 策略 3：完全本地执行
+  return generateImagePrompts(segments, fullText);
 }
 
 // 内部导出供测试用（兼容 v7 测试接口）

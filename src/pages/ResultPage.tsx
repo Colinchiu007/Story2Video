@@ -28,6 +28,7 @@ export default function ResultPage() {
   const [publishError, setPublishError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
   const [publishPlatform, setPublishPlatform] = useState<Platform>('bilibili');
+  const currentPlatformLabel = PLATFORMS.find(p => p.key === publishPlatform)?.label || publishPlatform;
 
   useEffect(() => {
     if (!id) return;
@@ -65,16 +66,14 @@ export default function ResultPage() {
       const videoUrl = task.video_url;
       const coverUrl = task.input_reference_url || undefined;
       const result = await publishVideo({
-        videoUrl,
+        videoUrl: videoUrl,
         title: task.prompt || '视频',
         platform: publishPlatform,
         desc: task.prompt || '',
-        coverUrl,
+        coverUrl: coverUrl,
       });
-      const meta = PLATFORMS.find(p => p.key === publishPlatform);
-      const platformLabel = meta?.label || publishPlatform;
-      setPublishSuccess(`已发布到 ${platformLabel}！任务ID: ${result.taskId}`);
-      toast.success(`视频已提交到 ${platformLabel} 发布队列`);
+      setPublishSuccess(`已发布到 ${currentPlatformLabel}！任务ID: ${result.taskId}`);
+      toast.success(`视频已提交到 ${currentPlatformLabel} 发布队列`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '发布失败';
       setPublishError(msg);
@@ -427,7 +426,7 @@ export default function ResultPage() {
                     ) : (
                       <Upload className="h-4 w-4 mr-2" />
                     )}
-                    {publishing ? '发布中...' : publishSuccess ? '已发布' : `发布到${platformLabel}`}
+                    {publishing ? '发布中...' : publishSuccess ? '已发布' : `发布到${currentPlatformLabel}`}
                   </Button>
                 </div>
               )}

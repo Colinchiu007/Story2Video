@@ -106,8 +106,8 @@ export default function SettingsGrid({
             <div className="flex items-end pt-1">
               <EffectSettingsButton
                 onClick={() => setEffectOpen(true)}
-                imageEffect={imageEffect}
-                transitionEffect={transitionEffect}
+                currentImageEffect={imageEffect}
+                currentTransitionEffect={transitionEffect}
               />
             </div>
             <EffectPicker
@@ -115,8 +115,7 @@ export default function SettingsGrid({
               onOpenChange={setEffectOpen}
               imageEffect={imageEffect}
               transitionEffect={transitionEffect}
-              onImageEffectChange={setImageEffect}
-              onTransitionEffectChange={setTransitionEffect}
+              onSave={(ie, te) => { setImageEffect(ie); setTransitionEffect(te); }}
             />
             <div className="space-y-2">
               <Label>每张图片展示时长</Label>
