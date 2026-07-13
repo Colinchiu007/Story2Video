@@ -402,7 +402,7 @@ export default function CreatePage() {
       // --- Gallery / Audio mode: auto-generate TTS (gallery only), images, then synthesize slideshow video ---
       if (mode === 'gallery' || mode === 'audio') {
         if (!isImageGenerationAvailable()) {
-          toast.error('图片轮播视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型（可灵内置AI、Vidu自定义API、商汤SenseNova自定义API等）');
+          toast.error('图片轮播视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型（可灵内置AI、即梦内置AI、Vidu自定义API、MiniMax自定义API、商汤SenseNova自定义API等）');
           setIsGenerating(false);
           return;
         }
@@ -756,7 +756,7 @@ export default function CreatePage() {
       // --- Batch mode: create parent + child tasks, generate TTS and images for each segment ---
       if (mode === 'batch') {
         if (!isImageGenerationAvailable()) {
-          toast.error('分段视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型');
+          toast.error('分段视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型（可灵内置AI、即梦内置AI、Vidu自定义API、MiniMax自定义API、商汤SenseNova自定义API等）');
           setIsGenerating(false);
           return;
         }

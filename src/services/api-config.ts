@@ -116,6 +116,7 @@ export function isImageGenerationAvailable(): boolean {
   if (provider === 'jimeng') return true;
   if (provider === 'vidu' && source === 'custom' && !!getViduApiKey()) return true;
   if (provider === 'sensenova' && source === 'custom' && !!getSenseNovaApiKey()) return true;
+  if (provider === 'minimax' && source === 'custom' && !!getMiniMaxApiKey()) return true;
   return false;
 }
 
