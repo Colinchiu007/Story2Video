@@ -1,4 +1,4 @@
-﻿import { supabase } from '@/db/supabase';
+import { supabase } from '@/db/supabase';
 import type { UserVoice } from '@/types';
 import { invokeFunction, extractErrorMessage, getCustomApiConfig } from './api-config';
 import { getDoubaoApiKey as getStoredDoubaoApiKey } from '@/components/ApiSettingsDialog';

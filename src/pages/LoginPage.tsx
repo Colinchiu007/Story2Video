@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Phone, MessageSquare, Eye, EyeOff, ArrowLeft, Check, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';

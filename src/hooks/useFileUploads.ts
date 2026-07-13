@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
 import { extractErrorMessage } from '@/services/api-config';

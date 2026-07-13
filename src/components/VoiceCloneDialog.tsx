@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Upload, X, Play, Pause, Trash2, User, AlertCircle, CheckCircle, Clock, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
