@@ -122,7 +122,11 @@ async function processCloneInBackground(
       const isResourceMismatch = String(msg).includes("resource ID is mismatched") || code === 55000000;
       let errorMsg: string;
       if (isResourceMismatch) {
-        errorMsg = `豆包API错误: ${msg}。您的 API Key 不支持音色克隆(voice_clone)端点。解决方式：1) 如果您已在豆包控制台复制了音色，请在「设置」→「已有豆包音色ID」中填入该音色ID，直接使用即可；2) 如需通过本应用克隆新音色，请在豆包控制台单独开通「音色克隆」服务并获取其专属 API Key。`;
+        errorMsg = `豆包API错误: ${msg}。请确认：
+1) 在豆包控制台已开通「音色克隆」服务并创建了对应资源（API 产品 → 语音合成 → 音色克隆）；
+2) 使用的 API Key 是该音色克隆资源的专属 Key（非 TTS 或其它服务的 Key）；
+3) 如使用平台内置 Key，请联系管理员确认已开通音色克隆权限。
+完整响应: ${JSON.stringify(cloneResult)}`;
       } else {
         errorMsg = `豆包API错误: ${msg} (code=${code})。请确认 API Key 正确且已开通音色克隆权限。`;
       }
