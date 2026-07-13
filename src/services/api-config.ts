@@ -156,6 +156,7 @@ export async function batchParallel<T>(
   items: T[],
   fn: (item: T, index: number) => Promise<unknown>,
   concurrency = 3,
+  delayMs = 0,
 ): Promise<unknown[]> {
   const results: unknown[] = [];
   for (let i = 0; i < items.length; i += concurrency) {
@@ -164,6 +165,9 @@ export async function batchParallel<T>(
       batch.map((item, idx) => fn(item, i + idx)),
     );
     results.push(...batchResults);
+    if (delayMs > 0 && i + concurrency < items.length) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
   }
   return results;
 }

@@ -550,52 +550,58 @@ export default function CreatePage() {
         );
 
         let completedCount = 0;
-        const imagePromises = optimizedPrompts.map(async (prompt, i) => {
-          const record = galleryImageRecords[i];
-          try {
-            const res = await startImageGeneration({ prompt, size });
-            let attempts = 0;
-            const maxAttempts = 60;
-            while (attempts < maxAttempts) {
-              await new Promise((r) => setTimeout(r, 3000));
-              const q = await queryImageGeneration(res.imageId);
-              if (q.status === 'completed' && q.publicUrl) {
-                await supabase.from('gallery_images').update({
-                  image_url: q.publicUrl,
-                  status: 'success',
-                  error_message: null,
-                }).eq('id', record.id);
-                completedCount++;
-                updateStep(imgIndex, 'active', `${completedCount}/${actualCount}`);
-                return { success: true, index: i };
+        const CONCURRENCY = 2;
+        const IMAGE_DELAY_MS = 1500;
+        const IMAGE_DELAY_MS = 1500;
+        const results = await batchParallel(
+          optimizedPrompts,
+          async (prompt, i) => {
+            const record = galleryImageRecords[i];
+            try {
+              const res = await startImageGeneration({ prompt, size });
+              let attempts = 0;
+              const maxAttempts = 60;
+              while (attempts < maxAttempts) {
+                await new Promise((r) => setTimeout(r, 3000));
+                const q = await queryImageGeneration(res.imageId);
+                if (q.status === "completed" && q.publicUrl) {
+                  await supabase.from("gallery_images").update({
+                    image_url: q.publicUrl,
+                    status: "success",
+                    error_message: null,
+                  }).eq("id", record.id);
+                  completedCount++;
+                  updateStep(imgIndex, "active", `${completedCount}/${actualCount}`);
+                  return { success: true, index: i };
+                }
+                if (q.status === "failed") {
+                  const errMsg = q.error || "??????";
+                  await supabase.from("gallery_images").update({
+                    status: "failed",
+                    error_message: errMsg,
+                  }).eq("id", record.id);
+                  return { success: false, index: i, error: errMsg };
+                }
+                attempts++;
               }
-              if (q.status === 'failed') {
-                const errMsg = q.error || '图片生成失败';
-                await supabase.from('gallery_images').update({
-                  status: 'failed',
-                  error_message: errMsg,
-                }).eq('id', record.id);
-                return { success: false, index: i, error: errMsg };
-              }
-              attempts++;
+              const errMsg = "??????";
+              await supabase.from("gallery_images").update({
+                status: "failed",
+                error_message: errMsg,
+              }).eq("id", record.id);
+              return { success: false, index: i, error: errMsg };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              await supabase.from("gallery_images").update({
+                status: "failed",
+                error_message: msg,
+              }).eq("id", record.id);
+              return { success: false, index: i, error: msg };
             }
-            const errMsg = '图片生成超时';
-            await supabase.from('gallery_images').update({
-              status: 'failed',
-              error_message: errMsg,
-            }).eq('id', record.id);
-            return { success: false, index: i, error: errMsg };
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            await supabase.from('gallery_images').update({
-              status: 'failed',
-              error_message: msg,
-            }).eq('id', record.id);
-            return { success: false, index: i, error: msg };
-          }
-        });
-
-        const results = await Promise.all(imagePromises);
+          },
+          CONCURRENCY,
+          IMAGE_DELAY_MS,
+        );
         const failed = results.filter((r) => !r.success);
         if (failed.length > 0) {
           const failReasons = failed.map((r) => `第${(r as { index: number }).index + 1}张: ${(r as { error?: string }).error || '未知错误'}`).join('；');
@@ -914,6 +920,8 @@ export default function CreatePage() {
             }
           },
           CONCURRENCY,
+        IMAGE_DELAY_MS,
+          IMAGE_DELAY_MS,
         );
 
         const allFailed = segmentResults.every((r) => (r as { success?: boolean }).success === false);
@@ -1068,6 +1076,7 @@ export default function CreatePage() {
           }
         },
         CONCURRENCY,
+        IMAGE_DELAY_MS,
       );
 
       updateStep(1, 'completed');
