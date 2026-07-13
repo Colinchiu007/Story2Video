@@ -371,7 +371,8 @@ export default function CreatePage() {
       // Step 3: Segment text by semantics ONLY when "audio duration" mode is selected
       let segments: string[] = [];
       if (isAudioDurationMode && audioText.trim()) {
-        segments = await splitTextToScenesSmart(audioText.trim());
+        const splitResult = await splitTextToScenesSmart(audioText.trim());
+        segments = splitResult.segments;
       }
       const totalSegments = segments.length > 0 ? segments.length : 1;
       const totalSeconds = isAudioDurationMode
@@ -521,14 +522,18 @@ export default function CreatePage() {
         // Step 3: Text segmentation with independent text-segmentation module
         const segIndex = bgmStepIndex >= 0 ? 3 : 2;
         updateStep(segIndex, 'active');
-        const imgSegments = await splitTextToScenesSmart(audioText.trim(), { targetCount: imageCount });
+        const segResult = await splitTextToScenesSmart(audioText.trim(), { targetCount: imageCount });
+        const imgSegments = segResult.segments;
+        const splitTier = segResult.tier;
         const actualCount = imgSegments.length;
         updateStep(segIndex, 'completed', `语义分断为 ${actualCount} 段 (text-seg v1.0)`);
 
         // Step 4: Generate image prompts with v9.0 strategy (client-side, no LLM)
         const optIndex = segIndex + 1;
         updateStep(optIndex, 'active');
-        const optimizedPrompts = await generateImagePromptsSmart(imgSegments, audioText.trim());
+        const promptResult = await generateImagePromptsSmart(imgSegments, audioText.trim());
+        const optimizedPrompts = promptResult.prompts;
+        const promptTier = promptResult.tier;
         updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
         toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 杢`);
 

@@ -685,7 +685,7 @@ function adaptSegmentsToCount(segments: string[], targetCount: number): string[]
 export async function splitTextToScenesSmart(
   text: string,
   options?: { targetCount?: number; config?: Partial<TextSegmentationConfig> },
-): Promise<string[]> {
+): Promise<{ segments: string[]; tier: "api" | "local" }> {
   const trimmed = text.trim();
   if (!trimmed) return [];
 
@@ -700,13 +700,13 @@ export async function splitTextToScenesSmart(
       if (options?.targetCount && options.targetCount > 0) {
         segments = adaptSegmentsToCount(segments, options.targetCount);
       }
-      return segments;
+      return { segments, tier: "api" };
     } catch {
       // API 调用失败，降级到本地实现
     }
   }
 
-  return splitTextToScenes(trimmed, options);
+  return { segments: splitTextToScenes(trimmed, options), tier: "local" };
 }
 
 /**

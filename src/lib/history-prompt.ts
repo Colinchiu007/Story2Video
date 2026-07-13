@@ -175,7 +175,7 @@ export class SmartTextSplitterV8 {
     }));
   }
 
-  private async tokenize(text: string): Promise<string[]> {
+  private async tokenize(text: string): Promise<{ prompts: string[]; tier: "api" | "local" }> {
     const { cut } = await import('jieba-js') as any;
     const parts = text.split(/([。！？])/);
     const segments: string[] = [];
@@ -1212,7 +1212,7 @@ export async function generateImagePromptsSmart(
     try {
       const result = await apiStoryboardCompose(segments, fullText);
       if (result.prompts && result.prompts.length > 0) {
-        return result.prompts;
+        return { prompts: result.prompts, tier: "api" };
       }
     } catch {
       // storyboard compose 失败，尝试策略 2
@@ -1225,7 +1225,7 @@ export async function generateImagePromptsSmart(
         localPrompts.map((p) => ({ prompt: p, platform: 'generic' })),
       );
       if (optimized.length > 0) {
-        return optimized.map((r) => r.optimized_prompt);
+        return { prompts: optimized.map((r) => r.optimized_prompt), tier: "api" };
       }
     } catch {
       // 完全降级到本地
@@ -1233,7 +1233,7 @@ export async function generateImagePromptsSmart(
   }
 
   // 策略 3：完全本地执行
-  return generateImagePrompts(segments, fullText);
+  return { prompts: generateImagePrompts(segments, fullText), tier: "local" };
 }
 
 // 内部导出供测试用（兼容 v7 测试接口）
