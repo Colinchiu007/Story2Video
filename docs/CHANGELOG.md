@@ -55,3 +55,32 @@
 - `58134cd` — feat/effects
 - `7e1334a` — 主合并提交
 - `c66a001` — feat/edge-functions-tests
+
+---
+
+## 2026-07-13 — v1.6.0 质量节拍 Sprint
+
+### 🐛 Bug 修复
+| # | Bug | 修复 |
+|---|-----|------|
+| 1 | API 设置保存误报失败 | 不安全 supabase 解构 → 可选链 + 存储解耦 |
+| 2 | 音色克隆误报失败 | 同上，两处相同模式 |
+| 3 | 测试套件挂起 | `pool: forks` + 超时 30s |
+| 4 | PostCSS BOM 解析失败 | 去除 BOM |
+
+### 🏗️ 架构统一
+- 语音模型配置形式统一：TTS 独立区块 → Profile 系统
+- Profile 向后兼容：旧展平字段自动迁移
+- doSave 从活跃 TTS Profile 推导字段
+
+### 📝 文档
+- `docs/postmortem-2026-07-13.md` — 完整事后复盘
+- `docs/prd.md` §8 — 质量节拍修复章节
+- `docs/FEATURE-LIST-2026-07-03.md` — 质量节拍 Sprint 补充
+- `references/quality-gates.md` — 复盘记录
+- `references/testing.md` — 反模式更新
+
+### 🧪 测试
+- 28 文件 / 304 用例 / 100% 通过
+- 新增 `src/test-setup.ts`
+- 新增 `test:ci` / `test:watch:pool` 脚本

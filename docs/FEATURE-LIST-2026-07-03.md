@@ -46,3 +46,45 @@
 | 常量提取 | 分离创建页面常量 | 已完成 |
 | ARCHITECTURE.md | 架构文档新增 | 已发布 |
 | DESIGN.md | 设计文档新增 | 已发布 |
+
+---
+
+## 二、质量节拍 Sprint (v1.6.0)
+
+> **版本**: v1.6.0
+> **日期**: 2026-07-13
+> **范围**: 防御式调试 + 语音模型配置统一 + 测试基础设施
+
+### 2.1 Bug 修复
+
+| # | Bug | 文件 | 根因 | 修复方式 |
+|---|-----|------|------|---------|
+| 1 | API 设置保存误报失败 | `ApiSettingsDialog.tsx` | 不安全 supabase 解构 `const { data: { user } }` | 可选链 + 存储解耦 |
+| 2 | 音色克隆误报失败 | `VoiceCloneDialog.tsx` | 同 #1，两处相同模式 | 可选链 + 错误区分 |
+| 3 | 测试套件挂起 | `vitest.config.ts` | `pool: threads` 与 jsdom 死锁 | `pool: forks` + 超时 |
+| 4 | PostCSS BOM 解析失败 | `package.json` | UTF-8 BOM | 去除 BOM |
+
+### 2.2 架构统一
+
+| 改动 | 说明 | 收益 |
+|------|------|------|
+| 语音模型配置统一 | TTS API Key 区块 → Profile 系统 | 与推理/视频/图片模型一致 |
+| Profile 向后兼容 | 旧展平字段自动迁移 | 用户数据无损过渡 |
+| doSave 推导 | 从活跃 TTS Profile 获取字段 | 消除双写不一致 |
+
+### 2.3 基础设施
+
+| 改动 | 说明 |
+|------|------|
+| 新增 `src/test-setup.ts` | 本地化 vitest setup |
+| 新增 `test:ci` 脚本 | `--bail=1` 首个失败即停 |
+| 更新 vitest.config.ts | `pool: forks` + `testTimeout: 30_000` |
+| 新增 `docs/postmortem-2026-07-13.md` | 完整事后复盘文档 |
+
+### 2.4 质量门禁补充
+
+| 门禁 | 检测方法 | 等级 |
+|------|---------|------|
+| 不安全 supabase 解构 | `rg "const \{ data: \{ \w+ \} \} = await supabase"` | 🔴 禁止 |
+| BOM 检测 | `rg "\xEF\xBB\xBF" package.json` | 🟡 警告 |
+| vitest pool | 检查 `pool: forks` | 🟡 警告 |

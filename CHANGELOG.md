@@ -1,3 +1,33 @@
+﻿## [v1.6.0] — 2026-07-13
+
+### 质量节拍：防御式调试与架构统一
+
+#### Bug 修复
+- **API 设置保存误报失败** (3c5f4a2): doSave() 中 supabase.auth.getUser() 未做 null safety，
+  data 为 
+ull 时解构抛 TypeError，虽 localStorage 已写入但仍显示"保存失败"。
+  - 根因：const { data: { user } } = await supabase.auth.getUser() 不安全解构
+  - 修复：uthResult?.data?.user ?? null 安全取值，DB 同步失败不阻塞本地保存
+  - 提示：区分"已保存"与"已保存（本地）"两种场景
+
+- **音色克隆误报失败** (3c5f4a2): VoiceCloneDialog 中两处 handleFileUpload 和 handleClone
+  存在相同不安全解构模式，导致 supabase 未登录时抛 TypeError 而非正确提示。
+  - 修复：同 API 设置修复模式，安全解构 + 区分 MiMo/Doubao 错误消息
+
+- **测试套件挂起** (3c5f4a2): itest run 默认 	hreads pool 与 i.stubGlobal 冲突死锁
+  - 修复：pool: 'forks' + 	estTimeout: 30_000 + 本地化 setup 文件
+
+#### 架构统一
+- **语音模型配置形式统一**: 将 TTS 标签页中独立的 MiMo/豆包 API Key 区块集成到 Profile 系统，
+  与推理/视频/图片模型使用一致的 enderProviderOptions 渲染
+  - ProfileEditor 新增 TTS 专属字段（豆包音色 ID/名称存于 extra）
+  - 向后兼容：旧展平字段自动迁移为 Profile
+  - doSave 从活跃 TTS Profile 推导展平字段
+
+#### 基础设施
+- 新增 	est:ci 脚本（--bail=1 早停）
+- 修复 package.json UTF-8 BOM 导致 PostCSS 解析失败
+- 新增 src/test-setup.ts 本地化 vitest setup 文件
 # Story2Video — 变更日志
 
 ## [v1.5.2] — 2026-06-30
@@ -137,3 +167,4 @@
 - 无 Python 后端代码
 - 视频合成在浏览器客户端完成（Canvas + MediaRecorder）
 - 绑定 `backend.appmiaoda.com` Supabase 实例
+

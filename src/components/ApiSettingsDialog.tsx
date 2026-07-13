@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { Eye, EyeOff, Sparkles, Plus, Pencil, Trash2, Star, Check, Plug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -335,6 +335,31 @@ function ProfileEditor({ profile, options, onChange, onCancel, onConfirm, isNew,
           )}
         </div>
       )}
+
+      {/* TTS 专属字段：集成到 Profile 系统中，与其他模型类型统一 */}
+      {type === 'tts' && provider === 'doubao' && (
+        <>
+          <div className="space-y-2">
+            <Label className="text-xs">已有豆包音色 ID <span className="text-muted-foreground font-normal">（可选）</span></Label>
+            <Input
+              placeholder="例如：S_kXWl9zS22"
+              value={profile.extra?.doubaoVoiceId ?? ''}
+              onChange={(e) => onChange({ extra: { ...(profile.extra || {}), doubaoVoiceId: e.target.value } })}
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">音色名称 <span className="text-muted-foreground font-normal">（可选）</span></Label>
+            <Input
+              placeholder="例如：我的专属音色"
+              value={profile.extra?.doubaoVoiceName ?? ''}
+              onChange={(e) => onChange({ extra: { ...(profile.extra || {}), doubaoVoiceName: e.target.value } })}
+              className="h-8 text-sm"
+            />
+          </div>
+        </>
+      )}
+
       <div className="flex gap-2 pt-1">
         <Button size="sm" onClick={onConfirm} disabled={!provider} className="flex-1 h-8">确认</Button>
         <Button size="sm" variant="outline" onClick={onCancel} className="flex-1 h-8">取消</Button>
@@ -416,6 +441,62 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
       tts: { ...DEFAULT_MODEL_CONFIG.tts, ...(storedCfg.modelConfig?.tts || {}), source: (storedCfg.modelConfig?.tts?.source as 'builtin' | 'custom') ?? 'builtin', provider: storedCfg.modelConfig?.tts?.provider ?? 'doubao' },
       video: { ...DEFAULT_MODEL_CONFIG.video, ...(storedCfg.modelConfig?.video || {}), source: (storedCfg.modelConfig?.video?.source as 'builtin' | 'custom') ?? 'builtin', provider: storedCfg.modelConfig?.video?.provider ?? 'jimeng' },
       image: { ...DEFAULT_MODEL_CONFIG.image, ...(storedCfg.modelConfig?.image || {}), source: (storedCfg.modelConfig?.image?.source as 'builtin' | 'custom') ?? 'builtin', provider: storedCfg.modelConfig?.image?.provider ?? 'jimeng' },
+    });
+
+    // 向后兼容：legacy flat 字段 → TTS profile（仅当尚无 profiles 时）
+    setModelConfig((prev) => {
+      const existingProfiles = prev.tts?.profiles ?? [];
+      if (existingProfiles.length > 0) return prev; // 已有 profile，跳过
+
+      const storedDoubaoKey = storedCfg.doubaoApiKey?.trim();
+      const storedMimoKey = storedCfg.mimoApiKey?.trim();
+      const storedVoiceId = storedCfg.doubaoVoiceId?.trim();
+      const storedVoiceName = storedCfg.doubaoVoiceName?.trim();
+      const ttsProvider = prev.tts?.provider || 'doubao';
+
+      // 只有存在旧数据时才迁移
+      if (!storedDoubaoKey && !storedMimoKey) return prev;
+
+      const legacyProfiles: CustomApiProfile[] = [];
+      if (storedDoubaoKey) {
+        legacyProfiles.push({
+          id: genId(),
+          name: '豆包语音（旧配置）',
+          provider: 'doubao',
+          apiBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+          apiKey: storedDoubaoKey,
+          modelName: 'doubao-pro-32k',
+          isDefault: ttsProvider === 'doubao',
+          extra: {
+            ...(storedVoiceId ? { doubaoVoiceId: storedVoiceId } : {}),
+            ...(storedVoiceName ? { doubaoVoiceName: storedVoiceName } : {}),
+          },
+        });
+      }
+      if (storedMimoKey) {
+        legacyProfiles.push({
+          id: genId(),
+          name: '小米 MiMo（旧配置）',
+          provider: 'mimo',
+          apiBaseUrl: 'https://api.xiaomimimo.com/v1',
+          apiKey: storedMimoKey,
+          modelName: 'mimo-v2.5-tts-voiceclone',
+          isDefault: ttsProvider === 'mimo',
+          extra: {},
+        });
+      }
+      // 确保只有一个 default
+      const hasDefault = legacyProfiles.some((p) => p.isDefault);
+      if (!hasDefault && legacyProfiles.length > 0) legacyProfiles[0].isDefault = true;
+
+      return {
+        ...prev,
+        tts: {
+          ...prev.tts,
+          profiles: legacyProfiles,
+          activeProfileId: legacyProfiles.find((p) => p.isDefault)?.id ?? legacyProfiles[0]?.id ?? null,
+        },
+      };
     });
   }, []);
 
@@ -555,16 +636,23 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
 
   const doSave = async (opts?: { close?: boolean }, modelConfigOverride?: ModelConfig) => {
     const effectiveModelConfig = modelConfigOverride ?? modelConfig;
+    // 从活跃 TTS Profile 推导展平字段（确保向后兼容）
+    const ttsCfg = effectiveModelConfig.tts;
+    const ttsProfiles = ttsCfg?.profiles ?? [];
+    const activeTtsProfile = ttsCfg?.activeProfileId
+      ? ttsProfiles.find((p) => p.id === ttsCfg.activeProfileId)
+      : ttsProfiles.find((p) => p.isDefault) ?? ttsProfiles[0] ?? null;
+
     const config: ApiConfig = {
       aiSource,
       apiBaseUrl: '',
       apiKey: '',
       modelName: '',
-      doubaoApiKey: doubaoApiKey.trim(),
-      mimoApiKey: mimoApiKey.trim(),
+      doubaoApiKey: (activeTtsProfile?.provider === 'doubao' ? activeTtsProfile.apiKey : doubaoApiKey).trim(),
+      mimoApiKey: (activeTtsProfile?.provider === 'mimo' ? activeTtsProfile.apiKey : mimoApiKey).trim(),
       jimengApiKey: jimengApiKey.trim(),
-      doubaoVoiceId: doubaoVoiceId.trim(),
-      doubaoVoiceName: doubaoVoiceName.trim(),
+      doubaoVoiceId: (activeTtsProfile?.extra?.doubaoVoiceId ?? doubaoVoiceId).trim(),
+      doubaoVoiceName: (activeTtsProfile?.extra?.doubaoVoiceName ?? doubaoVoiceName).trim(),
       modelConfig: effectiveModelConfig,
     };
 
@@ -574,32 +662,48 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
 
     setIsSaving(true);
     try {
+      // Layer 1: localStorage persistence (always succeeds unless storage is full)
       localStorage.setItem('api_config', JSON.stringify(config));
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { error } = await supabase.from('user_settings').upsert({
-          user_id: user.id,
-          ai_source: aiSource,
-          api_base_url: null,
-          api_key: null,
-          model_name: null,
-          doubao_api_key: doubaoApiKey.trim() || null,
-          mimo_api_key: mimoApiKey.trim() || null,
-          jimeng_api_key: jimengApiKey.trim() || null,
-          doubao_voice_id: doubaoVoiceId.trim() || null,
-          doubao_voice_name: doubaoVoiceName.trim() || null,
-          model_config: effectiveModelConfig,
-        }, { onConflict: 'user_id' });
-        if (error) throw error;
+      // Layer 2: DB sync for logged-in users (non-critical; safe destructure)
+      let syncError: string | null = null;
+      try {
+        const authResult = await supabase.auth.getUser();
+        const user = authResult?.data?.user ?? null;
+        if (user) {
+          const { error } = await supabase.from('user_settings').upsert({
+            user_id: user.id,
+            ai_source: aiSource,
+            api_base_url: null,
+            api_key: null,
+            model_name: null,
+            doubao_api_key: doubaoApiKey.trim() || null,
+            mimo_api_key: mimoApiKey.trim() || null,
+            jimeng_api_key: jimengApiKey.trim() || null,
+            doubao_voice_id: doubaoVoiceId.trim() || null,
+            doubao_voice_name: doubaoVoiceName.trim() || null,
+            model_config: effectiveModelConfig,
+          }, { onConflict: 'user_id' });
+          if (error) throw error;
+        }
+      } catch (syncErr) {
+        // DB sync failure is non-critical; log but don't block
+        syncError = syncErr instanceof Error ? syncErr.message : '同步到服务器失败';
+        console.warn('[ApiSettings] DB sync failed (config kept in localStorage):', syncErr);
       }
 
-      toast.success('API 配置已保存');
+      // Layer 3: always report local save as success; add note if DB sync failed
+      if (syncError) {
+        toast.success('API 配置已保存（本地）', { description: syncError });
+      } else {
+        toast.success('API 配置已保存');
+      }
       onSave?.(config);
       if (opts?.close) {
         onOpenChange(false);
       }
     } catch (err) {
+      // localStorage itself failed (e.g. quota exceeded) — critical
       const msg = err instanceof Error ? err.message : '保存失败';
       toast.error(`保存失败: ${msg}`);
     } finally {
@@ -796,91 +900,6 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
             </div>
           )}
 
-          {activeTab === 'tts' && (
-            <div className="space-y-4 border border-border rounded-sm p-4 bg-muted/20">
-              <span className="text-sm font-medium">小米 MiMo API 密钥</span>
-              <div className="space-y-2">
-                <Label htmlFor="mimo-api-key">API Key <span className="text-muted-foreground font-normal">（可选）</span></Label>
-                <div className="relative">
-                  <Input
-                    id="mimo-api-key"
-                    type={showMimoKey ? 'text' : 'password'}
-                    placeholder="请输入小米 MiMo API Key"
-                    value={mimoApiKey}
-                    onChange={(e) => setMimoApiKey(e.target.value)}
-                    className="bg-background border-border pr-10"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowMimoKey(!showMimoKey)}
-                    aria-label={showMimoKey ? '隐藏 MiMo API Key' : '显示 MiMo API Key'}
-                  >
-                    {showMimoKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  用于 MiMo 预置音色和声音复刻。留空时使用平台内置额度（如有）。可前往{' '}
-                  <a href="https://mimo.mi.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    MiMo 开放平台
-                  </a>{' '}
-                  获取密钥。
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Legacy Doubao Speech section */}
-          {activeTab === 'tts' && (
-            <div className="space-y-4 border border-border rounded-sm p-4 bg-muted/20">
-              <span className="text-sm font-medium">豆包语音 API 密钥</span>
-              <div className="space-y-2">
-                <Label htmlFor="doubao-api-key">API Key <span className="text-muted-foreground font-normal">（可选）</span></Label>
-                <div className="relative">
-                  <Input
-                    id="doubao-api-key"
-                    type={showDoubaoKey ? 'text' : 'password'}
-                    placeholder="请输入火山引擎豆包语音 API Key"
-                    value={doubaoApiKey}
-                    onChange={(e) => setDoubaoApiKey(e.target.value)}
-                    className="bg-background border-border pr-10"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowDoubaoKey(!showDoubaoKey)}
-                  >
-                    {showDoubaoKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  用于音色克隆和语音合成。如不填写，将使用平台内置额度（如有）。
-                </p>
-
-                <div className="space-y-2 pt-2 border-t border-border/50">
-                  <Label htmlFor="doubao-voice-id">已有豆包音色ID <span className="text-muted-foreground font-normal">（可选）</span></Label>
-                  <Input
-                    id="doubao-voice-id"
-                    placeholder="例如：S_kXWl9zS22"
-                    value={doubaoVoiceId}
-                    onChange={(e) => setDoubaoVoiceId(e.target.value)}
-                    className="bg-background border-border"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="doubao-voice-name">音色名称 <span className="text-muted-foreground font-normal">（可选）</span></Label>
-                  <Input
-                    id="doubao-voice-name"
-                    placeholder="例如：我的专属音色"
-                    value={doubaoVoiceName}
-                    onChange={(e) => setDoubaoVoiceName(e.target.value)}
-                    className="bg-background border-border"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
 
         </div>
       </DialogContent>
@@ -1009,3 +1028,8 @@ export function getLlmApiConfig(): { apiBaseUrl: string; apiKey: string; modelNa
     provider: p.provider,
   };
 }
+
+
+
+
+

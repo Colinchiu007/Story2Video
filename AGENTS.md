@@ -1,4 +1,4 @@
-# Story2Video — 开发流程规范
+﻿# Story2Video — 开发流程规范
 
 > AI 视频创作平台的开发流程与编码约定。AI 工具启动时自动读取。
 
@@ -106,3 +106,33 @@ deno run --allow-net --allow-env index.ts
 ## 版本
 
 当前为秒哒平台导出版本，无独立版本号。
+
+## 已知 Bug 模式
+
+以下模式在项目中多次出现，代码审查时需重点检查：
+
+### 🔴 不安全 supabase 解构
+
+```typescript
+// ❌ 危险 — data 为 null/undefined 时抛 TypeError
+const { data: { user } } = await supabase.auth.getUser();
+
+// ✅ 安全 — 可选链 + null 合并
+const authResult = await supabase.auth.getUser();
+const user = authResult?.data?.user ?? null;
+```
+
+此模式在 `ApiSettingsDialog.tsx`、`VoiceCloneDialog.tsx` 中已出现 4 次。
+
+### 🟡 测试套件稳定性
+
+- `vitest run` 必须使用 `pool: 'forks'`（默认 `threads` 与 `vi.stubGlobal` 冲突）
+- CI 使用 `npm run test:ci`（`--bail=1`）
+- 参考 `references/testing.md` 获取完整测试配置
+
+## 当前测试状态
+
+- **测试文件**: 28 个
+- **测试用例**: 304 条
+- **通过率**: 100%（零跳过、零失败）
+- **运行命令**: `npm test`（~45s）

@@ -1,4 +1,4 @@
-# 需求文档
+﻿# 需求文档
 
 > **版本：** v1.2.0
 > **最后更新：** 2026-07-02
@@ -1040,7 +1040,74 @@ CreatePage → storyboardCompose(scenes, fullText, strategy)
 
 **同样需迁移的 localStorage 开关：**
 - `orchestrator_url` / `orchestrator_api_key` → 环境变量 `VITE_ORCHESTRATOR_URL`（生产环境）
-- `watermark_*` 系列 → 后端用户配置表（跨设备同步）
+
+
+## 8. 质量节拍修复（v1.6.0）
+
+> **版本：** v1.6.0
+> **日期：** 2026-07-13
+> **范围：** 防御式调试 — 不安全 Supabase 解构修复 + 配置文件架构统一 + 语音模型配置统一
+
+### 8.1 Bug 修复
+
+#### 8.1.1 API 设置保存误报失败
+
+**现象：** 新增/修改 API 配置后 toast 提示「保存失败」，但数据已成功写入 localStorage。
+
+**根因：** `doSave()` 中使用 `const { data: { user } } = await supabase.auth.getUser()` 不安全解构。
+用户未登录时 `data` 为 `null`，解构抛 `TypeError`，catch 块统一显示「保存失败」。
+
+**修复：** 改用 `authResult?.data?.user ?? null` 安全取值，DB 同步失败不阻塞本地保存。
+
+#### 8.1.2 音色克隆误报失败
+
+**现象：** 选择小米 MiMo 音色保存时提示「克隆失败」，与服务端实际状态不一致。
+
+**根因：** `VoiceCloneDialog.tsx` 中两处（`handleFileUpload`、`handleClone`）存在同款不安全解构。
+
+**修复：** 安全解构 + 区分 MiMo/豆包错误消息。
+
+#### 8.1.3 测试套件挂起
+
+**现象：** `npm test` 中涉及 `vi.stubGlobal` 的测试超时挂死。
+
+**根因：** Vitest v4 默认 `threads` pool 与 jsdom + `vi.stubGlobal` 冲突导致死锁。
+
+**修复：** `pool: 'forks'` + `testTimeout: 30_000` + 本地化 setup 文件。
+
+#### 8.1.4 PostCSS BOM 解析失败
+
+**现象：** `npm run dev` 报 `Failed to load PostCSS config: Unexpected token '﻿'`。
+
+**根因：** `package.json` 包含 UTF-8 BOM，PostCSS 的 `JSON.parse` 无法处理。
+
+**修复：** UTF-8 without BOM 重新保存 package.json。
+
+### 8.2 架构统一
+
+#### 8.2.1 语音模型配置形式统一
+
+**背景：** TTS 标签页中 MiMo/豆包 API Key 为独立区块，与其他模型（推理、视频、图片）的 Profile 系统不一致。
+
+**改动：**
+- 移除 TTS 标签页独立 API Key 区块
+- TTS 字段（音色 ID/名称）通过 profile.extra 集成到 ProfileEditor
+- 向后兼容：旧展平字段自动迁移为 Profile
+- doSave 从活跃 TTS Profile 推导展平字段
+
+### 8.3 质量门禁补充
+
+| 门禁 | 检测方法 | 等级 |
+|------|---------|------|
+| 不安全 supabase 解构 | `rg "const \{ data: \{ \w+ \} \} = await supabase"` | 🔴 禁止 |
+| BOM 检测 | `rg $'\xEF\xBB\xBF' package.json` | 🟡 警告 |
+| vitest pool 配置 | 检查 `pool: 'forks'` 是否存在 | 🟡 警告 |
+
+### 8.4 架构原则
+
+1. **防御式解构原则**：API/服务返回值解构必须使用可选链（`?.`）+ 默认值（`??`）
+2. **存储解耦原则**：主存储写入不受辅助存储失败阻塞（localStorage 主 + DB 辅）
+3. **统一配置原则**：同类功能使用同一配置模式，不为个别供应商特殊处理
 
 ---
 
@@ -1051,8 +1118,6 @@ CreatePage → storyboardCompose(scenes, fullText, strategy)
 | v1.0.0 | 2026-06-01 | 初始版本 |
 | v1.1.0 | 2026-06-15 | 新增分段视频模式、音频生成模式、发布功能、会员系统、Ian 小黑分镜 |
 | v1.2.0 | 2026-07-02 | 审查报告修复：补充视频时长限制(4.8.1)、音频文件限制(4.3.1)、并发策略(4.11)、会员配额定义(7.18.2a)、数据模型扩展(4.8a)、发布状态机(7.20)、Feature Gate 迁移(7.19.5)；新增异常边界用例 |
+| v1.6.0 | 2026-07-13 | 质量节拍 Sprint：防御式调试（不安全 supabase 解构修复）+ 语音模型配置形式统一 + 测试基础设施稳定性修复 |
 
 > **注：** 本文档仅描述产品需求，不包含实现状态。实现进度请查阅 CHANGELOG.md 和各模块 AGENTS.md。
-### 7.19.4 集成路线
-- 当前模块独立可用，尚未集成到前端 CreatePage
-- 后续集成点：CreatePage 文案输入阶段的"开启小黑分镜"开关

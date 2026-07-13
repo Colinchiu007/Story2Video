@@ -127,7 +127,8 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
     if (!file) return;
 
     // Check login status before upload (storage policy requires authenticated)
-    const { data: { user } } = await supabase.auth.getUser();
+    const authResult = await supabase.auth.getUser();
+    const user = authResult?.data?.user ?? null;
     if (!user) {
       toast.error('上传音频需要登录，请先登录账号');
       return;
@@ -194,7 +195,8 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
     }
 
     // Check login status before calling Edge Function
-    const { data: { user } } = await supabase.auth.getUser();
+    const authResult = await supabase.auth.getUser();
+    const user = authResult?.data?.user ?? null;
     if (!user) {
       toast.error('音色克隆需要登录，请先登录账号');
       return;
@@ -249,7 +251,8 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '克隆失败';
-      toast.error(`克隆失败: ${msg}`);
+      const prefix = cloneProvider === 'mimo' ? 'MiMo 音色保存失败' : '克隆失败';
+      toast.error(`${prefix}: ${msg}`);
     } finally {
       setIsCloning(false);
     }
