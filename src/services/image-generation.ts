@@ -4,6 +4,7 @@ import {
   getImageSource,
   getViduApiKey,
   getSenseNovaApiKey,
+  getMiniMaxApiKey,
   invokeFunction,
   sizeToKlingAspectRatio,
 } from './api-config';
@@ -41,7 +42,7 @@ export async function startImageGeneration(params: {
   const source = getImageSource();
   const viduKey = getViduApiKey();
   const senseNovaKey = getSenseNovaApiKey();
-
+  const miniMaxKey = getMiniMaxApiKey();
   // Vidu 自定义API
   if (provider === 'vidu' && source === 'custom' && viduKey) {
     const data = await invokeFunction('vidu-generate-image', {
@@ -68,6 +69,19 @@ export async function startImageGeneration(params: {
     if (!data.imageId) throw new Error('SenseNova 未返回图片 URL');
     const publicUrl = await uploadRemoteImageToStorage(data.imageId);
     return { imageId: publicUrl, status: 'completed' };
+  }
+
+  // MiniMax 自定义API
+  if (provider === 'minimax' && source === 'custom' && miniMaxKey) {
+    const data = await invokeFunction('minimax-generate-image', {
+      prompt: params.prompt,
+      size: params.size ?? '1280x720',
+      minimax_api_key: miniMaxKey,
+      model: 'image-01-live',
+    }) as { imageId?: string; publicUrl?: string; status?: string; error?: string };
+    if (data.error) throw new Error(data.error);
+    if (!data.imageId) throw new Error('MiniMax 未返回图片 URL');
+    return { imageId: data.imageId, status: 'completed' };
   }
 
   // 可灵内置AI（默认）
@@ -106,7 +120,7 @@ export async function queryImageGeneration(imageId: string): Promise<{
   const source = getImageSource();
   const viduKey = getViduApiKey();
   const senseNovaKey = getSenseNovaApiKey();
-
+  const miniMaxKey = getMiniMaxApiKey();
   // Vidu 自定义API
   if (provider === 'vidu' && source === 'custom' && viduKey) {
     return await invokeFunction('vidu-query-image', {
@@ -123,6 +137,17 @@ export async function queryImageGeneration(imageId: string): Promise<{
 
   // SenseNova 自定义API
   if (provider === 'sensenova' && source === 'custom' && senseNovaKey) {
+    return {
+      status: 'completed',
+      progress: 100,
+      image_url: imageId,
+      publicUrl: imageId,
+      error: null,
+    };
+  }
+
+  // MiniMax 自定义API
+  if (provider === 'minimax' && source === 'custom' && miniMaxKey) {
     return {
       status: 'completed',
       progress: 100,
@@ -228,7 +253,8 @@ export async function startImageGenerationWithProfile(
       prompt: params.prompt,
       size: params.size ?? '1280x720',
       minimax_api_key: apiKey.trim(),
-      model: modelName || 'image-01',
+      // 程序硬编码 image-01-live（更好版本，支持画风）；用户 profile 中保存的 modelName 仍可覆盖
+      model: modelName || 'image-01-live',
     }) as { imageId?: string; publicUrl?: string; status?: string; error?: string; raw?: unknown };
     if (data.error) throw new Error(data.error);
     if (!data.imageId) throw new Error('MiniMax 未返回图片 URL');

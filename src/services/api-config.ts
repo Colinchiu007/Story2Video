@@ -49,6 +49,14 @@ export function getSenseNovaApiKey(): string | null {
   return null;
 }
 
+export function getMiniMaxApiKey(): string | null {
+  const p = getActiveProfile('image');
+  if (p?.provider === 'minimax') {
+    return p.apiKey?.trim() || null;
+  }
+  return null;
+}
+
 function readModelConfig(): { video?: { provider?: string; source?: string }; image?: { provider?: string; source?: string } } {
   const stored = localStorage.getItem('api_config');
   if (!stored) return {};

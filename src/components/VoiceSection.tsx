@@ -4,16 +4,17 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import VoiceCloneDialog from '@/components/VoiceCloneDialog';
-import { VOICE_CATEGORIES, EMOTION_OPTIONS } from '@/constants/voices';
+import { VOICE_CATEGORIES, MIMO_PRESET_VOICES, DEFAULT_VOICE_ID, EMOTION_OPTIONS } from '@/constants/voices';
 import type { UserVoice } from '@/types';
 
 interface VoiceSectionProps {
   voiceId: string;
   setVoiceId: (v: string) => void;
   saveLastVoice: (id: string) => void;
+  voiceProvider: 'doubao' | 'mimo';
   doubaoVoice: { id: string; name: string } | null;
   userVoices: UserVoice[];
-  handleSelectClonedVoice: (voiceId: string, name: string) => void;
+  handleSelectClonedVoice: (voiceId: string, name: string, provider?: 'doubao' | 'mimo') => void;
   speed: number;
   setSpeed: (v: number) => void;
   vol: number;
@@ -27,11 +28,30 @@ interface VoiceSectionProps {
 }
 
 export default function VoiceSection({
-  voiceId, setVoiceId, saveLastVoice, doubaoVoice, userVoices,
+  voiceId, setVoiceId, saveLastVoice, voiceProvider, doubaoVoice, userVoices,
   handleSelectClonedVoice,
   speed, setSpeed, vol, setVol, pitch, setPitch, emotion, setEmotion,
   showVoiceSettings, setShowVoiceSettings,
 }: VoiceSectionProps) {
+  const presetList = voiceProvider === 'mimo' ? MIMO_PRESET_VOICES : VOICE_CATEGORIES;
+  const clonedVoices = userVoices.filter((voice) => (voice.provider ?? 'doubao') === voiceProvider);
+  const visibleLegacyVoice = voiceProvider === 'doubao' ? doubaoVoice : null;
+
+  React.useEffect(() => {
+    const isKnownMimoClone = userVoices.some((voice) => voice.provider === 'mimo' && voice.id === voiceId);
+    const isMimoPreset = voiceId.startsWith('mimo_default_');
+    const looksLikeRecordId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(voiceId);
+
+    if (voiceProvider === 'mimo' && (isMimoPreset || isKnownMimoClone || looksLikeRecordId)) return;
+    if (voiceProvider === 'doubao' && !isMimoPreset && !isKnownMimoClone) return;
+
+    const defaultVoiceId = voiceProvider === 'mimo'
+      ? MIMO_PRESET_VOICES[0].voices[0].value
+      : DEFAULT_VOICE_ID;
+    setVoiceId(defaultVoiceId);
+    saveLastVoice(defaultVoiceId);
+  }, [voiceProvider, voiceId, userVoices, setVoiceId, saveLastVoice]);
+
   return (
     <>
       {/* Voice Selection */}
@@ -39,6 +59,7 @@ export default function VoiceSection({
         <div className="flex items-center justify-between">
           <Label>音色选择</Label>
           <VoiceCloneDialog
+            defaultProvider={voiceProvider}
             onSelectVoice={handleSelectClonedVoice}
             trigger={
               <button
@@ -62,31 +83,31 @@ export default function VoiceSection({
             <SelectValue placeholder="选择音色" />
           </SelectTrigger>
           <SelectContent>
-            {doubaoVoice && (
+            {visibleLegacyVoice && (
               <>
                 <div className="px-2 py-1.5 text-xs font-semibold text-primary uppercase tracking-wider">
                   我的音色
                 </div>
-                <SelectItem key={doubaoVoice.id} value={doubaoVoice.id}>
-                  {doubaoVoice.name}
+                <SelectItem key={visibleLegacyVoice.id} value={visibleLegacyVoice.id}>
+                  {visibleLegacyVoice.name}
                 </SelectItem>
               </>
             )}
-            {userVoices.length > 0 && (
+            {clonedVoices.length > 0 && (
               <>
-                {!doubaoVoice && (
+                {!visibleLegacyVoice && (
                   <div className="px-2 py-1.5 text-xs font-semibold text-primary uppercase tracking-wider">
                     我的音色
                   </div>
                 )}
-                {userVoices.map((v) => (
-                  <SelectItem key={v.voice_id ?? v.id} value={v.voice_id ?? v.id}>
+                {clonedVoices.map((v) => (
+                  <SelectItem key={v.id} value={voiceProvider === 'mimo' ? v.id : (v.voice_id ?? v.id)}>
                     {v.name}
                   </SelectItem>
                 ))}
               </>
             )}
-            {VOICE_CATEGORIES.map((cat) => (
+            {presetList.map((cat) => (
               <React.Fragment key={cat.label}>
                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   {cat.label}

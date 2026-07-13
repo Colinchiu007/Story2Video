@@ -72,11 +72,35 @@ serve(async (req: Request): Promise<Response> => {
   const size = (body.size as string) ?? "1280x720";
   const model = (body.model as string) || "image-01";
   const aspectRatio = sizeToAspectRatio(size);
+  const promptOptimizer = (body.prompt_optimizer as boolean) ?? false;
+  const aigcWatermark = (body.aigc_watermark as boolean) ?? false;
+  const style = body.style as { style_type?: string; style_weight?: number } | undefined;
+
+  // 构建请求体
+  const reqBody: Record<string, unknown> = {
+    model,
+    prompt: prompt.slice(0, 1500),
+    aspect_ratio: aspectRatio,
+    response_format: "url",
+    n: 1,
+    prompt_optimizer: promptOptimizer,
+    aigc_watermark: aigcWatermark,
+  };
+
+  // image-01-live 支持画风设置
+  if (model === "image-01-live" && style?.style_type) {
+    reqBody.style = {
+      style_type: style.style_type,
+      style_weight: style.style_weight ?? 0.8,
+    };
+  }
 
   console.log("[minimax-generate-image] request", {
     model,
     promptLength: prompt.length,
     aspectRatio,
+    promptOptimizer,
+    style: style?.style_type,
     apiKeyPrefix: apiKey.slice(0, 8) + "...",
   });
 
@@ -87,14 +111,7 @@ serve(async (req: Request): Promise<Response> => {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        prompt: prompt.slice(0, 1500),
-        aspect_ratio: aspectRatio,
-        response_format: "url",
-        n: 1,
-        prompt_optimizer: false,
-      }),
+      body: JSON.stringify(reqBody),
     });
 
     console.log("[minimax-generate-image] response status", resp.status);

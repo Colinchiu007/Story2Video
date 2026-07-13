@@ -33,6 +33,33 @@ export async function cloneVoice(params: {
   return data;
 }
 
+/**
+ * 上传音色样本到 MiMo。无独立 clone API：直接写入 user_voices 表并标记 provider='mimo'、status='ready'。
+ * 后续 TTS 调用时，Edge Function 会从 sample_audio_url 下载并 base64 编码传入 MiMo。
+ */
+export async function uploadMimoVoiceSample(params: {
+  name: string;
+  description?: string;
+  audioUrl: string;
+  duration?: number;
+}): Promise<{ id: string; name: string; status: string }> {
+  const { data, error } = await supabase
+    .from('user_voices')
+    .insert({
+      name: params.name,
+      description: params.description ?? '',
+      sample_audio_url: params.audioUrl,
+      status: 'ready',          // MiMo 无需异步训练，保存即 ready
+      provider: 'mimo',
+      duration_seconds: params.duration ?? null,
+      language: 'Chinese',
+    })
+    .select('id, name, status')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function getUserVoices(): Promise<UserVoice[]> {
   const { data, error } = await supabase
     .from('user_voices')

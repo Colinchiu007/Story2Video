@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { generateTTS } from '@/services/tts';
+import { generateMimoTTS, getMimoVoiceNameFromId } from '@/services/tts-mimo';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 
@@ -14,6 +15,7 @@ interface CachedTts {
   vol: number;
   pitch: number;
   emotion: string;
+  voiceProvider: 'doubao' | 'mimo';
 }
 
 interface UseTTSPreviewOptions {
@@ -23,7 +25,9 @@ interface UseTTSPreviewOptions {
   vol: number;
   pitch: number;
   emotion: string;
+  voiceProvider: 'doubao' | 'mimo';
   isDoubaoClonedVoice: (id: string) => boolean;
+  isMimoClonedVoice: (id: string) => boolean;
 }
 
 interface UseTTSPreviewReturn {
@@ -51,7 +55,10 @@ export function useTTSPreview(options: UseTTSPreviewOptions): UseTTSPreviewRetur
   const [audioDuration, setAudioDuration] = useState(0);
   const [cachedTts, setCachedTts] = useState<CachedTts | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const { audioText, voiceId, speed, vol, pitch, emotion, isDoubaoClonedVoice } = options;
+  const {
+    audioText, voiceId, speed, vol, pitch, emotion, voiceProvider,
+    isDoubaoClonedVoice, isMimoClonedVoice,
+  } = options;
 
   const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -98,15 +105,24 @@ export function useTTSPreview(options: UseTTSPreviewOptions): UseTTSPreviewRetur
     }
     setIsPreviewingAudio(true);
     try {
-      const result = await generateTTS({
-        text: audioText.trim(),
-        voiceId,
-        speed,
-        vol,
-        pitch,
-        emotion: emotion === 'default' ? undefined : emotion,
-        cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
-      });
+      const mimoCloned = voiceProvider === 'mimo' && isMimoClonedVoice(voiceId);
+      const result = voiceProvider === 'mimo'
+        ? await generateMimoTTS({
+            text: audioText.trim(),
+            voice: mimoCloned ? undefined : getMimoVoiceNameFromId(voiceId),
+            voiceRecordId: mimoCloned ? voiceId : undefined,
+            model: mimoCloned ? 'mimo-v2.5-tts-voiceclone' : 'mimo-v2.5-tts',
+            speed,
+          })
+        : await generateTTS({
+            text: audioText.trim(),
+            voiceId,
+            speed,
+            vol,
+            pitch,
+            emotion: emotion === 'default' ? undefined : emotion,
+            cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
+          });
       setAudioPreview(result.audioUrl);
       setAudioDuration(result.audioLength);
       setCachedTts({
@@ -118,6 +134,7 @@ export function useTTSPreview(options: UseTTSPreviewOptions): UseTTSPreviewRetur
         vol,
         pitch,
         emotion,
+        voiceProvider,
       });
       const audio = new Audio(result.audioUrl);
       audioRef.current = audio;
@@ -131,7 +148,7 @@ export function useTTSPreview(options: UseTTSPreviewOptions): UseTTSPreviewRetur
     } finally {
       setIsPreviewingAudio(false);
     }
-  }, [user, navigate, audioText, voiceId, speed, vol, pitch, emotion, isDoubaoClonedVoice, isPlayingPreview, audioPreview]);
+  }, [user, navigate, audioText, voiceId, speed, vol, pitch, emotion, voiceProvider, isDoubaoClonedVoice, isMimoClonedVoice, isPlayingPreview, audioPreview]);
 
   return {
     audioPreview, isPreviewingAudio, isPlayingPreview, audioDuration, cachedTts,
