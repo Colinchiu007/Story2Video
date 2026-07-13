@@ -173,7 +173,7 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
       toast.success('音频上传成功');
     } catch (err) {
       const msg = extractErrorMessage(err);
-      toast.error(\上传失败: \\);
+      toast.error(`上传失败: ${msg}`);
     }
   };
 
