@@ -100,6 +100,7 @@ export interface UserVoice {
   status: 'pending' | 'ready' | 'error' | 'forbidden';
   duration_seconds: number | null;
   language: string | null;
+  provider?: 'doubao' | 'mimo' | null;  // 区分克隆来源（豆包火山引擎 / 小米 MiMo）
   error_message: string | null;
   created_at: string;
   updated_at: string;

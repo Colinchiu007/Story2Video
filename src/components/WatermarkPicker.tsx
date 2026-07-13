@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Watermark, Settings2 } from 'lucide-react';
+import { Droplet, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -47,7 +47,7 @@ export default function WatermarkPicker({ open, onOpenChange }: WatermarkPickerP
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Watermark className="h-5 w-5 text-primary" />
+            <Droplet className="h-5 w-5 text-primary" />
             视频水印设置
           </DialogTitle>
           <DialogDescription>

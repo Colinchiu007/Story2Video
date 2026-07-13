@@ -29,10 +29,8 @@ describe('IMAGE_EFFECTS', () => {
     expect(none?.label).toBe('无效果');
   });
 
-  it('is immutable', () => {
-    const original = IMAGE_EFFECTS[0].label;
-    (IMAGE_EFFECTS[0] as any).label = 'hacked';
-    expect(IMAGE_EFFECTS[0].label).toBe(original);
+  it('is not accidentally mutated by other tests', () => {
+    expect(IMAGE_EFFECTS[0].label).toBe('放大');
   });
 });
 

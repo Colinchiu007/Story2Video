@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/db/supabase';
-import { generateImagePrompts } from '@/lib/history-prompt';
+import { generateImagePrompts, generateImagePromptsSmart } from '@/lib/history-prompt';
 import { startImageGenerationWithProfile, queryImageGenerationWithProfile } from '@/services/image-generation';
 import type { CustomApiProfile } from '@/types';
 
@@ -142,7 +142,7 @@ export default function ImagePromptPreviewDialog({ open, onOpenChange, onGenerat
       // 使用默认策略时，优先调用前端 V9 策略（本地执行，无需网络请求）
       const isDefaultStrategy = strategy.trim() === DEFAULT_STRATEGY.trim();
       if (isDefaultStrategy) {
-        const prompts = generateImagePrompts([text], text);
+        const prompts = await generateImagePromptsSmart([text], text);
         if (prompts.length > 0 && prompts[0]) {
           setOptimizedPrompt(prompts[0]);
           toast.success('提示词优化完成（V9策略）');

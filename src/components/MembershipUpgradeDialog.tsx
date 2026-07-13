@@ -82,10 +82,7 @@ type Step = 'list' | 'confirming' | 'processing' | 'success' | 'error';
 function _baseUrl(): string {
   return (
     localStorage.getItem('orchestrator_url') ||
-    (typeof import.meta !== 'undefined' &&
-      (import.meta as Record<string, unknown>).env &&
-      ((import.meta as Record<string, unknown>).env as Record<string, string>)
-        .VITE_ORCHESTRATOR_URL) ||
+    import.meta.env.VITE_ORCHESTRATOR_URL ||
     '/api'
   );
 }

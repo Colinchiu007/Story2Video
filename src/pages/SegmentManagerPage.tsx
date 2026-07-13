@@ -15,8 +15,8 @@ import { getVideoTask, listChildTasks } from '@/services/video-generation';
 import { generateTTS } from '@/services/tts';
 import { startImageGeneration, queryImageGeneration } from '@/services/image-generation';
 import { createSlideshowVideo, getVideoExtension } from '@/lib/slideshow';
-import { generateImagePrompts } from '@/lib/history-prompt';
-import { splitTextToScenes } from '@/lib/text-segmentation';
+import { generateImagePrompts, generateImagePromptsSmart } from '@/lib/history-prompt';
+import { splitTextToScenes, splitTextToScenesSmart } from '@/lib/text-segmentation';
 import type { VideoTask, GalleryImage } from '@/types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 
@@ -133,8 +133,8 @@ export default function SegmentManagerPage() {
       // Generate new images
       const duration = segment.tts_duration_seconds || Math.max(8, text.length / 3.3);
       const imageCount = Math.max(1, Math.ceil(duration / 6));
-      const scenes = splitTextToScenes(text, { targetCount: imageCount });
-      const prompts = generateImagePrompts(scenes, text);
+      const scenes = await splitTextToScenesSmart(text, { targetCount: imageCount });
+      const prompts = await generateImagePromptsSmart(scenes, text);
 
       const records = await Promise.all(
         prompts.map((p, i) =>

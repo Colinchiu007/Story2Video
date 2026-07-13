@@ -67,6 +67,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 设置
               </Button>
               {user ? (
+              <>
               <Button variant="ghost" size="sm" className="h-auto py-1 px-2 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent" onClick={() => setWatermarkOpen(true)}>
                 <Settings2 className="h-3.5 w-3.5 mr-1" />
                 水印
@@ -75,6 +76,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   <LogOut className="h-3.5 w-3.5 mr-1" />
                   退出
                 </Button>
+              </>
               ) : (
                 <Button variant="ghost" size="sm" className="h-auto py-1 px-2 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent" onClick={() => navigate('/login')}>
                   <LogIn className="h-3.5 w-3.5 mr-1" />

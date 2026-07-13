@@ -24,6 +24,7 @@ export interface ApiConfig {
   apiKey: string;
   modelName: string;
   doubaoApiKey: string;
+  mimoApiKey: string;
   jimengApiKey: string;
   doubaoVoiceId: string;
   doubaoVoiceName: string;
@@ -40,6 +41,7 @@ const LLM_OPTIONS = [
 
 const TTS_OPTIONS = [
   { value: 'doubao', label: '豆包语音' },
+  { value: 'mimo', label: '小米 MiMo' },
   { value: 'other', label: '其他' },
 ];
 
@@ -91,6 +93,7 @@ const PROVIDER_DEFAULTS: Record<string, { url: string; model: string }> = {
   qwen:     { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-max' },
   kimi:     { url: 'https://api.moonshot.cn/v1',   model: 'moonshot-v1-8k' },
   doubao:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-pro-32k' },
+  mimo:     { url: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-tts' },
   jimeng:   { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-t2i-v40' },
   kling:    { url: 'https://api.klingai.com/v1',   model: '' },
   vidu:     { url: 'https://api.vidu.cn',          model: 'viduq2' },
@@ -115,6 +118,10 @@ function getProviderDefaults(provider: string, type: keyof ModelConfig): { url: 
     if (provider === 'jimeng') return { url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'jimeng-video-generate-3.0' };
     if (provider === 'vidu') return { url: 'https://api.vidu.cn', model: '' };
     if (provider === 'kling') return { url: '', model: '' };
+  }
+  // 语音模型个性化默认值
+  if (type === 'tts' && provider === 'mimo') {
+    return { url: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-tts-voiceclone' };
   }
   return base;
 }
@@ -218,11 +225,11 @@ function ProfileEditor({ profile, options, onChange, onCancel, onConfirm, isNew,
 
   const provider = profile.provider;
   const isJimeng = provider === 'jimeng';
-  // 固定地址的供应商不需要用户填写Base URL
-  const fixedUrlProviders = ['vidu', 'kling', 'jimeng', 'sensenova'];
+  // URL 固定的提供商：写到 PROVIDER_DEFAULTS 中默认 URL，不再让用户手填
+  const fixedUrlProviders = ['vidu', 'kling', 'jimeng', 'sensenova', 'minimax'];
   const showBaseUrl = !fixedUrlProviders.includes(provider);
-  // 图片模型中部分供应商模型名是固定的或有默认值
-  const showModelName = type !== 'image' || (provider !== 'vidu' && provider !== 'jimeng');
+  // 图片模型中部分供应商模型名是固定的（或程序内置了模型清单），不需要用户手填
+  const showModelName = type !== 'image' || (provider !== 'vidu' && provider !== 'jimeng' && provider !== 'minimax');
 
   return (
     <div className="space-y-3 border border-primary/30 rounded-md p-4 bg-primary/5">
@@ -316,11 +323,16 @@ function ProfileEditor({ profile, options, onChange, onCancel, onConfirm, isNew,
         <div className="space-y-2">
           <Label className="text-xs">模型名称</Label>
           <Input
-            placeholder="例如：deepseek-chat"
+            placeholder={provider === 'minimax' ? 'image-01 或 image-01-live' : '例如：deepseek-chat'}
             value={profile.modelName}
             onChange={(e) => onChange({ modelName: e.target.value })}
             className="h-8 text-sm"
           />
+          {provider === 'minimax' && (
+            <p className="text-[10px] text-muted-foreground">
+              image-01（基础版）或 image-01-live（支持画风: 漫画/元气/中世纪/水彩）
+            </p>
+          )}
         </div>
       )}
       <div className="flex gap-2 pt-1">
@@ -334,6 +346,7 @@ function ProfileEditor({ profile, options, onChange, onCancel, onConfirm, isNew,
 export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSettingsDialogProps) {
   const [aiSource, setAiSource] = useState<'builtin' | 'custom'>('builtin');
   const [doubaoApiKey, setDoubaoApiKey] = useState('');
+  const [mimoApiKey, setMimoApiKey] = useState('');
   const [jimengApiKey, setJimengApiKey] = useState('');
   const [doubaoVoiceId, setDoubaoVoiceId] = useState('');
   const [doubaoVoiceName, setDoubaoVoiceName] = useState('');
@@ -342,6 +355,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
   const [activeTab, setActiveTab] = useState<'llm' | 'tts' | 'video' | 'image' | 'publish'>('llm');
 
   const [showDoubaoKey, setShowDoubaoKey] = useState(false);
+  const [showMimoKey, setShowMimoKey] = useState(false);
   const [orchestratorUrl, setOrchestratorUrl] = useState('');
   const [orchestratorApiKey, setOrchestratorApiKey] = useState('');
   const [showOrchestratorKey, setShowOrchestratorKey] = useState(false);
@@ -379,6 +393,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
             apiKey: data.api_key ?? '',
             modelName: data.model_name ?? '',
             doubaoApiKey: data.doubao_api_key ?? '',
+            mimoApiKey: data.mimo_api_key ?? '',
             jimengApiKey: data.jimeng_api_key ?? '',
             doubaoVoiceId: data.doubao_voice_id ?? '',
             doubaoVoiceName: data.doubao_voice_name ?? '',
@@ -390,6 +405,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
 
     setAiSource(storedCfg.aiSource ?? 'builtin');
     setDoubaoApiKey(storedCfg.doubaoApiKey ?? '');
+    setMimoApiKey(storedCfg.mimoApiKey ?? '');
     setJimengApiKey(storedCfg.jimengApiKey ?? '');
     setDoubaoVoiceId(storedCfg.doubaoVoiceId ?? '');
     setDoubaoVoiceName(storedCfg.doubaoVoiceName ?? '');
@@ -545,6 +561,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
       apiKey: '',
       modelName: '',
       doubaoApiKey: doubaoApiKey.trim(),
+      mimoApiKey: mimoApiKey.trim(),
       jimengApiKey: jimengApiKey.trim(),
       doubaoVoiceId: doubaoVoiceId.trim(),
       doubaoVoiceName: doubaoVoiceName.trim(),
@@ -568,6 +585,7 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
           api_key: null,
           model_name: null,
           doubao_api_key: doubaoApiKey.trim() || null,
+          mimo_api_key: mimoApiKey.trim() || null,
           jimeng_api_key: jimengApiKey.trim() || null,
           doubao_voice_id: doubaoVoiceId.trim() || null,
           doubao_voice_name: doubaoVoiceName.trim() || null,
@@ -778,6 +796,40 @@ export default function ApiSettingsDialog({ open, onOpenChange, onSave }: ApiSet
             </div>
           )}
 
+          {activeTab === 'tts' && (
+            <div className="space-y-4 border border-border rounded-sm p-4 bg-muted/20">
+              <span className="text-sm font-medium">小米 MiMo API 密钥</span>
+              <div className="space-y-2">
+                <Label htmlFor="mimo-api-key">API Key <span className="text-muted-foreground font-normal">（可选）</span></Label>
+                <div className="relative">
+                  <Input
+                    id="mimo-api-key"
+                    type={showMimoKey ? 'text' : 'password'}
+                    placeholder="请输入小米 MiMo API Key"
+                    value={mimoApiKey}
+                    onChange={(e) => setMimoApiKey(e.target.value)}
+                    className="bg-background border-border pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowMimoKey(!showMimoKey)}
+                    aria-label={showMimoKey ? '隐藏 MiMo API Key' : '显示 MiMo API Key'}
+                  >
+                    {showMimoKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  用于 MiMo 预置音色和声音复刻。留空时使用平台内置额度（如有）。可前往{' '}
+                  <a href="https://mimo.mi.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    MiMo 开放平台
+                  </a>{' '}
+                  获取密钥。
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Legacy Doubao Speech section */}
           {activeTab === 'tts' && (
             <div className="space-y-4 border border-border rounded-sm p-4 bg-muted/20">
@@ -889,6 +941,11 @@ export function getDoubaoApiKey(): string | null {
   return cfg?.doubaoApiKey?.trim() || null;
 }
 
+export function getMimoApiKey(): string | null {
+  const cfg = getApiConfig();
+  return cfg?.mimoApiKey?.trim() || null;
+}
+
 export function getJimengApiKey(): string | null {
   const cfg = getApiConfig();
   return cfg?.jimengApiKey?.trim() || null;
@@ -902,6 +959,15 @@ export function getDoubaoVoiceId(): string | null {
 export function getDoubaoVoiceName(): string | null {
   const cfg = getApiConfig();
   return cfg?.doubaoVoiceName?.trim() || null;
+}
+
+export function getTtsProvider(): 'doubao' | 'mimo' {
+  const cfg = getModelConfig().tts;
+  if (cfg?.source === 'custom') {
+    const provider = getActiveProfile('tts')?.provider || cfg.provider;
+    return provider === 'mimo' ? 'mimo' : 'doubao';
+  }
+  return cfg?.provider === 'mimo' ? 'mimo' : 'doubao';
 }
 
 export function getVideoProvider(): string {

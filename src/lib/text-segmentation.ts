@@ -9,7 +9,11 @@
  * - 完全独立的模块化设计，不依赖业务逻辑
  * - 配置驱动，所有参数可配置
  * - 纯客户端执行，无需网络请求
+ * - 支持 API 增强（smart-sentence-splitter 服务）
  */
+
+import { isSentenceSplitterAvailable } from '@/services/external-config';
+import { apiSplitText, adaptToSceneSegments, adaptToSubtitleLines } from '@/services/sentence-splitter-api';
 
 // ==================== 配置类型定义 ====================
 
@@ -664,6 +668,71 @@ function adaptSegmentsToCount(segments: string[], targetCount: number): string[]
   }
 
   return merged;
+}
+
+// ==================== API 增强包装函数 ====================
+
+/**
+ * 智能场景分割（API-First + TS-Fallback）
+ *
+ * 当 smart-sentence-splitter 服务可用时，通过 API 调用获得 LLM 增强的分句结果；
+ * 否则降级到本地 TS 实现（splitTextToScenes）。
+ *
+ * @param text 原始文案
+ * @param options targetCount: 目标段数；config: 自定义配置
+ * @returns 场景文本数组
+ */
+export async function splitTextToScenesSmart(
+  text: string,
+  options?: { targetCount?: number; config?: Partial<TextSegmentationConfig> },
+): Promise<string[]> {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  if (isSentenceSplitterAvailable()) {
+    try {
+      const apiResult = await apiSplitText(trimmed, {
+        mode: 'precise',
+        enableLlm: true,
+        enableEra: true,
+      });
+      let segments = adaptToSceneSegments(apiResult);
+      if (options?.targetCount && options.targetCount > 0) {
+        segments = adaptSegmentsToCount(segments, options.targetCount);
+      }
+      return segments;
+    } catch {
+      // API 调用失败，降级到本地实现
+    }
+  }
+
+  return splitTextToScenes(trimmed, options);
+}
+
+/**
+ * 智能字幕分割（API-First + TS-Fallback）
+ *
+ * @param text 原始文案
+ * @param options config: 自定义配置
+ * @returns 字幕文本数组
+ */
+export async function splitTextToSubtitlesSmart(
+  text: string,
+  options?: { config?: Partial<TextSegmentationConfig> },
+): Promise<string[]> {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  if (isSentenceSplitterAvailable()) {
+    try {
+      const apiResult = await apiSplitText(trimmed, { mode: 'precise' });
+      return adaptToSubtitleLines(apiResult);
+    } catch {
+      // API 调用失败，降级到本地实现
+    }
+  }
+
+  return splitTextToSubtitles(trimmed, options);
 }
 
 // ==================== 版本标识 ====================

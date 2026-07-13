@@ -26,8 +26,8 @@ describe('EffectPicker', () => {
 
   it('shows current selection in footer', () => {
     render(<EffectPicker {...defaultProps} />);
-    expect(screen.getByText(/放大/)).toBeTruthy();
-    expect(screen.getByText(/渐隐/)).toBeTruthy();
+    expect(screen.getAllByText(/放大/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/渐隐/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows all image effects', () => {
@@ -53,10 +53,11 @@ describe('EffectPicker', () => {
 
   it('selects a different image effect on click', () => {
     render(<EffectPicker {...defaultProps} />);
-    // Click "缩小" to change selection
-    fireEvent.click(screen.getByText('缩小'));
+    // Click "缩小" to change selection - use getAllByText since multiple elements may match
+    const shrinkEls = screen.getAllByText('缩小');
+    fireEvent.click(shrinkEls[0]);
     // Footer should update
-    expect(screen.getByText(/缩小/)).toBeTruthy();
+    expect(screen.getAllByText(/缩小/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('calls onSave with selected effects', () => {

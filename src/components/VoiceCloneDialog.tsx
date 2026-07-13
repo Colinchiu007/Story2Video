@@ -12,19 +12,21 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { cloneVoice, getUserVoices, deleteUserVoice } from '@/services/voice-clone';
+import { cloneVoice, uploadMimoVoiceSample, getUserVoices, deleteUserVoice } from '@/services/voice-clone';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserVoice } from '@/types';
 
 interface VoiceCloneDialogProps {
-  onSelectVoice?: (voiceId: string, name: string) => void;
+  onSelectVoice?: (voiceId: string, name: string, provider?: 'doubao' | 'mimo') => void;
+  defaultProvider?: 'doubao' | 'mimo';
   trigger?: React.ReactNode;
 }
 
-export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneDialogProps) {
+export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'doubao', trigger }: VoiceCloneDialogProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'clone' | 'list'>('clone');
+  const [cloneProvider, setCloneProvider] = useState<'doubao' | 'mimo'>(defaultProvider);
   const [userVoices, setUserVoices] = useState<UserVoice[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
@@ -60,9 +62,10 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
 
   useEffect(() => {
     if (open) {
+      setCloneProvider(defaultProvider);
       fetchVoices();
     }
-  }, [open, fetchVoices]);
+  }, [open, defaultProvider, fetchVoices]);
 
   useEffect(() => {
     return () => {
@@ -134,13 +137,23 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
       toast.error('仅支持音频文件');
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (cloneProvider === 'mimo') {
+      if (!['mp3', 'wav'].includes(extension)) {
+        toast.error('MiMo 仅支持 MP3 / WAV 音频样本');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('MiMo 音频样本不能超过 10MB');
+        return;
+      }
+    } else if (file.size > 20 * 1024 * 1024) {
       toast.error('音频文件不能超过 20MB');
       return;
     }
 
     try {
-      const ext = file.name.split('.').pop() ?? 'webm';
+      const ext = extension || 'webm';
       const path = `voice-clone/${crypto.randomUUID()}.${ext}`;
       const { error } = await supabase.storage.from('generated-audio').upload(path, file, {
         contentType: file.type,
@@ -189,6 +202,25 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
 
     setIsCloning(true);
     try {
+      if (cloneProvider === 'mimo') {
+        const result = await uploadMimoVoiceSample({
+          name: voiceName.trim(),
+          description: voiceDesc.trim(),
+          audioUrl,
+          duration: Math.round(audioDuration),
+        });
+        toast.success('MiMo 音色样本已保存，可立即使用');
+        setVoiceName('');
+        setVoiceDesc('');
+        setAudioUrl('');
+        setAudioDuration(0);
+        setActiveTab('list');
+        await fetchVoices();
+        window.dispatchEvent(new CustomEvent('voice-clone-updated'));
+        onSelectVoice?.(result.id, result.name, 'mimo');
+        return;
+      }
+
       const result = await cloneVoice({
         name: voiceName.trim(),
         description: voiceDesc.trim(),
@@ -210,8 +242,9 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
         setAudioDuration(0);
         setActiveTab('list');
         fetchVoices();
+        window.dispatchEvent(new CustomEvent('voice-clone-updated'));
         if (onSelectVoice && result.voiceId) {
-          onSelectVoice(result.voiceId, voiceName.trim());
+          onSelectVoice(result.voiceId, voiceName.trim(), 'doubao');
         }
       }
     } catch (err) {
@@ -226,6 +259,7 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
     try {
       await deleteUserVoice(id);
       setUserVoices((prev) => prev.filter((v) => v.id !== id));
+      window.dispatchEvent(new CustomEvent('voice-clone-updated'));
       toast.success('已删除');
     } catch {
       toast.error('删除失败');
@@ -310,6 +344,33 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
 
         {activeTab === 'clone' && (
           <div className="space-y-5 pt-2">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">克隆服务商</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {(['doubao', 'mimo'] as const).map((provider) => (
+                  <label
+                    key={provider}
+                    className={`flex items-center gap-2 rounded-sm border px-3 py-2 text-sm cursor-pointer transition-colors ${
+                      cloneProvider === provider ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="voice-clone-provider"
+                      value={provider}
+                      checked={cloneProvider === provider}
+                      onChange={() => {
+                        setCloneProvider(provider);
+                        setAudioUrl('');
+                        setAudioDuration(0);
+                      }}
+                    />
+                    {provider === 'doubao' ? '豆包语音' : '小米 MiMo'}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
             {/* Audio input */}
             <div className="space-y-3">
               <Label>音频样本 <span className="text-muted-foreground font-normal">(建议 15-60 秒)</span></Label>
@@ -322,6 +383,8 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
                       type="button"
                       variant={isRecording ? 'default' : 'outline'}
                       onClick={isRecording ? stopRecording : startRecording}
+                      disabled={cloneProvider === 'mimo'}
+                      title={cloneProvider === 'mimo' ? 'MiMo 仅支持上传 MP3 / WAV 文件' : undefined}
                       className={isRecording ? 'bg-destructive hover:bg-destructive/90' : ''}
                     >
                       {isRecording ? (
@@ -345,12 +408,16 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
                   >
                     <Upload className="h-6 w-6 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">点击上传音频文件</span>
-                    <span className="text-xs text-muted-foreground">支持 MP3 / M4A / WAV，10秒-5分钟，≤ 20MB</span>
+                    <span className="text-xs text-muted-foreground">
+                      {cloneProvider === 'mimo'
+                        ? '支持 MP3 / WAV，10秒-5分钟，≤ 10MB'
+                        : '支持 MP3 / M4A / WAV，10秒-5分钟，≤ 20MB'}
+                    </span>
                   </div>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="audio/*"
+                    accept={cloneProvider === 'mimo' ? '.mp3,.wav,audio/mpeg,audio/wav' : 'audio/*'}
                     className="hidden"
                     onChange={handleFileUpload}
                   />
@@ -404,32 +471,34 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
             )}
 
             {/* Enhancement options */}
-            <div className="space-y-2">
-              <Label className="text-sm flex items-center gap-1">
-                <Volume2 className="h-3.5 w-3.5" />
-                音频增强
-              </Label>
-              <div className="flex flex-wrap gap-3">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={noiseReduce}
-                    onChange={(e) => setNoiseReduce(e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  降噪
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={volumeNormalize}
-                    onChange={(e) => setVolumeNormalize(e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  音量归一化
-                </label>
+            {cloneProvider === 'doubao' && (
+              <div className="space-y-2">
+                <Label className="text-sm flex items-center gap-1">
+                  <Volume2 className="h-3.5 w-3.5" />
+                  音频增强
+                </Label>
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={noiseReduce}
+                      onChange={(e) => setNoiseReduce(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    降噪
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={volumeNormalize}
+                      onChange={(e) => setVolumeNormalize(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    音量归一化
+                  </label>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Clone button */}
             <Button
@@ -437,11 +506,15 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
               disabled={isCloning || !voiceName.trim() || !audioUrl}
               className="w-full"
             >
-              {isCloning ? '克隆中...' : '开始克隆'}
+              {isCloning
+                ? (cloneProvider === 'mimo' ? '保存中...' : '克隆中...')
+                : (cloneProvider === 'mimo' ? '保存 MiMo 音色' : '开始克隆')}
             </Button>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              使用火山引擎豆包语音进行音色克隆。请确保音频为清晰的人声干声，时长建议 10 秒-5 分钟，避免背景音乐和噪音，以获得最佳克隆效果。
+              {cloneProvider === 'mimo'
+                ? 'MiMo 无需训练，样本保存后即可用于声音复刻。请上传清晰的 MP3 或 WAV 人声干声，文件不超过 10MB。'
+                : '使用火山引擎豆包语音进行音色克隆。请确保音频为清晰的人声干声，时长建议 10 秒-5 分钟，避免背景音乐和噪音，以获得最佳克隆效果。'}
             </p>
           </div>
         )}
@@ -461,6 +534,9 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium truncate">{voice.name}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {(voice.provider ?? 'doubao') === 'mimo' ? 'MiMo' : '豆包'}
+                      </span>
                       {statusBadge(voice.status)}
                     </div>
                     {voice.description && (
@@ -485,12 +561,14 @@ export default function VoiceCloneDialog({ onSelectVoice, trigger }: VoiceCloneD
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {voice.status === 'ready' && voice.voice_id && (
+                    {voice.status === 'ready' && ((voice.provider ?? 'doubao') === 'mimo' || voice.voice_id) && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          onSelectVoice?.(voice.voice_id!, voice.name);
+                          const provider = (voice.provider ?? 'doubao') === 'mimo' ? 'mimo' : 'doubao';
+                          const selectedId = provider === 'mimo' ? voice.id : voice.voice_id!;
+                          onSelectVoice?.(selectedId, voice.name, provider);
                           setOpen(false);
                         }}
                       >

@@ -41,6 +41,37 @@ export const VOICE_CATEGORIES: VoiceCategory[] = [
   },
 ];
 
+export const MIMO_PRESET_VOICES: VoiceCategory[] = [
+  {
+    label: 'MiMo 中文女声',
+    voices: [
+      { value: 'mimo_default_cn:冰糖', label: '冰糖（默认）' },
+      { value: 'mimo_default_cn:茉莉', label: '茉莉' },
+    ],
+  },
+  {
+    label: 'MiMo 中文男声',
+    voices: [
+      { value: 'mimo_default_cn:苏打', label: '苏打' },
+      { value: 'mimo_default_cn:白桦', label: '白桦' },
+    ],
+  },
+  {
+    label: 'MiMo 英文女声',
+    voices: [
+      { value: 'mimo_default_en:Mia', label: 'Mia（默认）' },
+      { value: 'mimo_default_en:Chloe', label: 'Chloe' },
+    ],
+  },
+  {
+    label: 'MiMo 英文男声',
+    voices: [
+      { value: 'mimo_default_en:Milo', label: 'Milo' },
+      { value: 'mimo_default_en:Dean', label: 'Dean' },
+    ],
+  },
+];
+
 export const EMOTION_OPTIONS: VoiceOption[] = [
   { value: 'default', label: '默认' },
   { value: 'happy', label: '开心' },

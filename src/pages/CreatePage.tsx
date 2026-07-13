@@ -15,13 +15,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { createVideoTask, startTextToVideo, startImageToVideo, startRemixVideo } from '@/services/video-generation';
 import { generateTTS } from '@/services/tts';
+import { generateMimoTTS, getMimoVoiceNameFromId } from '@/services/tts-mimo';
 import { getUserVoices } from '@/services/voice-clone';
 import { useJimengForVideo, batchParallel, useViduForVideo, isImageGenerationAvailable } from '@/services/api-config';
 import { startImageGeneration, queryImageGeneration } from '@/services/image-generation';
 import { createGalleryImage } from '@/services/gallery';
 import { createSlideshowVideo, mapSubtitleStyle, getVideoExtension } from '@/lib/slideshow';
 import type { SubtitleSegment } from '@/lib/slideshow';
-import { getDoubaoVoiceId, getDoubaoVoiceName } from '@/components/ApiSettingsDialog';
+import { getDoubaoVoiceId, getDoubaoVoiceName, getTtsProvider } from '@/components/ApiSettingsDialog';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import VoiceCloneDialog from '@/components/VoiceCloneDialog';
@@ -30,8 +31,8 @@ import SubtitleSettings from '@/components/SubtitleSettings';
 import VideoTemplatePicker, { TemplateSelectButton } from '@/components/VideoTemplatePicker';
 import EffectPicker, { EffectSettingsButton } from '@/components/EffectPicker';
 import { getTemplateById } from '@/lib/template-library';
-import { splitTextToScenes, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
-import { generateImagePrompts } from '@/lib/history-prompt';
+import { splitTextToScenes, splitTextToScenesSmart, buildSubtitleTimelineV2 } from '@/lib/text-segmentation';
+import { generateImagePrompts, generateImagePromptsSmart } from '@/lib/history-prompt';
 import { mixAudio, uploadMixedAudio } from '@/lib/audio-mixer';
 import type { CreateMode, UserVoice } from '@/types';
 import type { VideoTemplate } from '@/types/template';
@@ -78,6 +79,7 @@ export default function CreatePage() {
   const [prompt, setPrompt] = useState('');
   const [audioText, setAudioText] = useState('');
   const [voiceId, setVoiceId] = useState('zh_female_qingxinnvsheng_uranus_bigtts');
+  const [voiceProvider, setVoiceProvider] = useState<'doubao' | 'mimo'>(() => getTtsProvider());
   const [speed, setSpeed] = useState(1.0);
   const [vol, setVol] = useState(1.0);
   const [pitch, setPitch] = useState(0);
@@ -122,10 +124,19 @@ export default function CreatePage() {
   // ── 音色相关 ────────────────────────────────────────────────────
   const [userVoices, setUserVoices] = useState<UserVoice[]>([]);
   const [doubaoVoice, setDoubaoVoice] = useState<{ id: string; name: string } | null>(null);
+  const [mimoVoice, setMimoVoice] = useState<{ id: string; name: string } | null>(null);
 
   const isDoubaoClonedVoice = useCallback((id: string): boolean => {
-    return !!doubaoVoice && id === doubaoVoice.id;
-  }, [doubaoVoice]);
+    if (doubaoVoice && id === doubaoVoice.id) return true;
+    return userVoices.some((voice) =>
+      (voice.provider ?? 'doubao') === 'doubao' && (voice.voice_id ?? voice.id) === id,
+    );
+  }, [doubaoVoice, userVoices]);
+
+  const isMimoClonedVoice = useCallback((id: string): boolean => {
+    if (mimoVoice && mimoVoice.id === id) return true;
+    return userVoices.some((voice) => voice.provider === 'mimo' && voice.id === id);
+  }, [mimoVoice, userVoices]);
   // isUploading moved to useFileUploads hook
   // ── TTS 预览（通过 useTTSPreview hook） ─────────────────────────
   const {
@@ -134,7 +145,8 @@ export default function CreatePage() {
     setAudioPreview, setAudioDuration, setCachedTts, setIsPlayingPreview,
     blobToBase64, recognizeAudio, handlePreviewAudio,
   } = useTTSPreview({
-    audioText, voiceId, speed, vol, pitch, emotion, isDoubaoClonedVoice,
+    audioText, voiceId, speed, vol, pitch, emotion, voiceProvider,
+    isDoubaoClonedVoice, isMimoClonedVoice,
   });
 
 
@@ -187,7 +199,7 @@ export default function CreatePage() {
     try {
       const id = getDoubaoVoiceId();
       if (id) {
-        setDoubaoVoice({ id, name: getDoubaoVoiceName() });
+        setDoubaoVoice({ id, name: getDoubaoVoiceName() || id });
       } else {
         setDoubaoVoice(null);
       }
@@ -198,14 +210,48 @@ export default function CreatePage() {
 
   useEffect(() => { loadVoices(); }, [loadVoices]);
 
+  useEffect(() => {
+    const syncTtsProvider = () => setVoiceProvider(getTtsProvider());
+    window.addEventListener('api-settings-saved', syncTtsProvider);
+    window.addEventListener('voice-clone-updated', loadVoices);
+    return () => {
+      window.removeEventListener('api-settings-saved', syncTtsProvider);
+      window.removeEventListener('voice-clone-updated', loadVoices);
+    };
+  }, [loadVoices]);
+
   const saveLastVoice = useCallback((id: string) => {
     localStorage.setItem('last_voice_id', id);
   }, []);
 
-  const handleSelectClonedVoice = useCallback((voice: UserVoice) => {
-    setVoiceId(voice.voice_id ?? voice.id);
-    saveLastVoice(voice.voice_id ?? voice.id);
+  const handleSelectClonedVoice = useCallback((selectedVoiceId: string, name: string, provider?: 'doubao' | 'mimo') => {
+    if (provider) setVoiceProvider(provider);
+    if (provider === 'mimo') setMimoVoice({ id: selectedVoiceId, name });
+    setVoiceId(selectedVoiceId);
+    saveLastVoice(selectedVoiceId);
   }, [setVoiceId, saveLastVoice]);
+
+  const dispatchTTS = useCallback(async (text: string) => {
+    if (voiceProvider === 'mimo') {
+      const cloned = isMimoClonedVoice(voiceId);
+      return generateMimoTTS({
+        text,
+        voice: cloned ? undefined : getMimoVoiceNameFromId(voiceId),
+        voiceRecordId: cloned ? voiceId : undefined,
+        model: cloned ? 'mimo-v2.5-tts-voiceclone' : 'mimo-v2.5-tts',
+        speed,
+      });
+    }
+    return generateTTS({
+      text,
+      voiceId,
+      speed,
+      vol,
+      pitch,
+      emotion: emotion === 'default' ? undefined : emotion,
+      cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
+    });
+  }, [voiceProvider, voiceId, speed, vol, pitch, emotion, isDoubaoClonedVoice, isMimoClonedVoice]);
 
   const handleTemplateSelect = useCallback((templateId: string | undefined) => {
     setSelectedTemplateId(templateId);
@@ -294,15 +340,7 @@ export default function CreatePage() {
       if (mode !== 'gallery') {
         if (audioText.trim()) {
           try {
-            const result = await generateTTS({
-              text: audioText.trim(),
-              voiceId,
-              speed,
-              vol,
-              pitch,
-              emotion: emotion === 'default' ? undefined : emotion,
-              cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
-            });
+            const result = await dispatchTTS(audioText.trim());
             audioUrl = result.audioUrl;
             finalAudioDuration = result.audioLength;
             setAudioDuration(result.audioLength);
@@ -329,7 +367,7 @@ export default function CreatePage() {
       // Step 3: Segment text by semantics ONLY when "audio duration" mode is selected
       let segments: string[] = [];
       if (isAudioDurationMode && audioText.trim()) {
-        segments = splitTextToScenes(audioText.trim());
+        segments = await splitTextToScenesSmart(audioText.trim());
       }
       const totalSegments = segments.length > 0 ? segments.length : 1;
       const totalSeconds = isAudioDurationMode
@@ -402,7 +440,8 @@ export default function CreatePage() {
             && cachedTts.speed === speed
             && cachedTts.vol === vol
             && cachedTts.pitch === pitch
-            && cachedTts.emotion === emotion;
+            && cachedTts.emotion === emotion
+            && cachedTts.voiceProvider === voiceProvider;
           if (canReuse) {
             audioUrl = cachedTts.audioUrl;
             finalAudioDuration = cachedTts.audioDuration;
@@ -410,15 +449,7 @@ export default function CreatePage() {
             ttsReused = true;
           } else {
             try {
-              const result = await generateTTS({
-                text: audioText.trim(),
-                voiceId,
-                speed,
-                vol,
-                pitch,
-                emotion: emotion === 'default' ? undefined : emotion,
-                cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
-              });
+              const result = await dispatchTTS(audioText.trim());
               audioUrl = result.audioUrl;
               finalAudioDuration = result.audioLength;
               setAudioDuration(result.audioLength);
@@ -431,6 +462,7 @@ export default function CreatePage() {
                 vol,
                 pitch,
                 emotion,
+                voiceProvider,
               });
             } catch (err) {
               const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '语音合成失败';
@@ -485,14 +517,14 @@ export default function CreatePage() {
         // Step 3: Text segmentation with independent text-segmentation module
         const segIndex = bgmStepIndex >= 0 ? 3 : 2;
         updateStep(segIndex, 'active');
-        const imgSegments = splitTextToScenes(audioText.trim(), { targetCount: imageCount });
+        const imgSegments = await splitTextToScenesSmart(audioText.trim(), { targetCount: imageCount });
         const actualCount = imgSegments.length;
         updateStep(segIndex, 'completed', `语义分断为 ${actualCount} 段 (text-seg v1.0)`);
 
         // Step 4: Generate image prompts with v9.0 strategy (client-side, no LLM)
         const optIndex = segIndex + 1;
         updateStep(optIndex, 'active');
-        const optimizedPrompts = generateImagePrompts(imgSegments, audioText.trim());
+        const optimizedPrompts = await generateImagePromptsSmart(imgSegments, audioText.trim());
         updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
         toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 杢`);
 
@@ -792,15 +824,7 @@ export default function CreatePage() {
                 segAudioDuration = Math.max(8, child.text.length / 3.3);
               } else {
                 try {
-                  const ttsResult = await generateTTS({
-                    text: child.text,
-                    voiceId,
-                    speed,
-                    vol,
-                    pitch,
-                    emotion: emotion === 'default' ? undefined : emotion,
-                    cluster: isDoubaoClonedVoice(voiceId) ? 'volcano_icl' : undefined,
-                  });
+                  const ttsResult = await dispatchTTS(child.text);
                   segAudioUrl = ttsResult.audioUrl;
                   segAudioDuration = ttsResult.audioLength;
                 } catch (err) {
@@ -821,8 +845,8 @@ export default function CreatePage() {
               }).eq('id', child.id);
 
               // Generate image prompts
-              const segSegments = splitTextToScenes(child.text, { targetCount: segImageCount });
-              const segPrompts = generateImagePrompts(segSegments, child.text);
+              const segSegments = await splitTextToScenesSmart(child.text, { targetCount: segImageCount });
+              const segPrompts = await generateImagePromptsSmart(segSegments, child.text);
 
               // Pre-create gallery image records
               const galleryRecords = await Promise.all(
@@ -1187,6 +1211,7 @@ export default function CreatePage() {
               voiceId={voiceId}
               setVoiceId={setVoiceId}
               saveLastVoice={saveLastVoice}
+              voiceProvider={voiceProvider}
               doubaoVoice={doubaoVoice}
               userVoices={userVoices}
               handleSelectClonedVoice={handleSelectClonedVoice}
