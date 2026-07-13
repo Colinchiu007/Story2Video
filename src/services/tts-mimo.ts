@@ -6,13 +6,9 @@ export type MimoModel = 'mimo-v2.5-tts' | 'mimo-v2.5-tts-voiceclone';
 export interface GenerateMimoTTSParams {
   text: string;
   model?: MimoModel;
-  /** 预置音色名（如 "Chloe"）或复合 ID（如 "mimo_default_cn:冰糖"）。克隆时可不传 */
   voice?: string;
-  /** 克隆音色时传 user_voices.id；Edge Function 会自动下载并 base64 编码 */
   voiceRecordId?: string;
-  /** 输出格式，默认 wav */
   format?: 'wav' | 'mp3' | 'pcm16';
-  /** 倍速，仅用于时长估算（MiMo 无 native speed 参数） */
   speed?: number;
 }
 
@@ -23,63 +19,80 @@ export interface GenerateMimoTTSResult {
   model?: string;
 }
 
-/**
- * 调用 tts-mimo 边缘函数进行 MiMo 语音合成。
- * - 预置音色：传 voice（音色名，如 "Chloe"），model 默认 mimo-v2.5-tts
- * - 克隆音色：传 voiceRecordId（user_voices.id），model 默认 mimo-v2.5-tts-voiceclone
- */
 export async function generateMimoTTS(params: GenerateMimoTTSParams): Promise<GenerateMimoTTSResult> {
-  const model: MimoModel = params.model
-    ?? (params.voiceRecordId ? 'mimo-v2.5-tts-voiceclone' : 'mimo-v2.5-tts');
-
-  const body: Record<string, unknown> = {
-    text: params.text,
-    model,
-    format: params.format ?? 'wav',
-  };
-
-  if (params.voiceRecordId) {
-    body.voice_record_id = params.voiceRecordId;
-  } else if (params.voice) {
-    body.voice = params.voice;
-  } else {
-    throw new Error('generateMimoTTS 需要 voice 或 voiceRecordId 之一');
-  }
-
-  if (typeof params.speed === 'number') {
-    body.speed = params.speed;
-  }
+  const model = params.model ?? (params.voiceRecordId ? 'mimo-v2.5-tts-voiceclone' : 'mimo-v2.5-tts');
+  const body: Record<string, unknown> = { text: params.text, model, format: params.format ?? 'wav' };
+  if (params.voiceRecordId) body.voice_record_id = params.voiceRecordId;
+  else if (params.voice) body.voice = params.voice;
+  else throw new Error('generateMimoTTS 需要 voice 或 voiceRecordId 之一');
+  if (typeof params.speed === 'number') body.speed = params.speed;
 
   const mimoKey = getStoredMimoApiKey();
-  if (mimoKey) {
-    body.mimo_api_key = mimoKey;
+  if (mimoKey) body.mimo_api_key = mimoKey;
+
+  try {
+    const data = await invokeFunction('tts-mimo', body) as { audioUrl: string; audioLength: number; provider?: string; model?: string };
+    return { audioUrl: data.audioUrl, audioLength: data.audioLength, provider: data.provider as 'mimo', model: data.model ?? model };
+  } catch {
+    return generateMimoTTSDirect(params, mimoKey);
   }
-
-  const data = await invokeFunction('tts-mimo', body) as {
-    audioUrl: string;
-    audioLength: number;
-    provider?: string;
-    model?: string;
-  };
-
-  return {
-    audioUrl: data.audioUrl,
-    audioLength: data.audioLength,
-    provider: data.provider as 'mimo',
-    model: data.model ?? model,
-  };
 }
 
-/**
- * 解析 voiceId 为 MiMo 音色名字。
- * 对于 `mimo_default_cn:冰糖` 这种复合 ID，拆分出 `:冰糖` 部分；
- * 对于克隆音色（UUID 格式），返回空字符串，调用方应改用 voiceRecordId 逻辑。
- */
+async function generateMimoTTSDirect(params: GenerateMimoTTSParams, apiKey: string): Promise<GenerateMimoTTSResult> {
+  const { supabase } = await import('@/db/supabase');
+  const model = params.model ?? 'mimo-v2.5-tts-voiceclone';
+  const format = params.format ?? 'wav';
+
+  let resolvedVoice: string;
+  if (params.voiceRecordId) resolvedVoice = await resolveVoiceSample(params.voiceRecordId);
+  else if (params.voice) resolvedVoice = params.voice;
+  else throw new Error('缺少 voice 或 voiceRecordId');
+  if (!apiKey) throw new Error('未配置 MiMo API Key，请在设置中填写');
+
+  const resp = await fetch('https://api.xiaomimimo.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: '' }, { role: 'assistant', content: params.text }], audio: { format, voice: resolvedVoice } }),
+  });
+  const raw = await resp.text();
+  const result = JSON.parse(raw);
+  if (!resp.ok) throw new Error('MiMo 合成失败: ' + (result?.message ?? 'HTTP ' + resp.status));
+
+  const b64 = result?.choices?.[0]?.message?.audio?.data;
+  if (!b64) throw new Error('MiMo 未返回音频数据');
+
+  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const ext = format === 'mp3' ? 'mp3' : 'wav';
+  const filePath = 'uploads/' + crypto.randomUUID() + '.' + ext;
+  const { error: upErr } = await supabase.storage.from('generated-audio').upload(filePath, bin, {
+    contentType: format === 'mp3' ? 'audio/mpeg' : 'audio/wav',
+    cacheControl: 'no-cache',
+  });
+  if (upErr) throw upErr;
+  const { data: urlData } = supabase.storage.from('generated-audio').getPublicUrl(filePath);
+  const chineseChars = (params.text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const audioLength = Math.max(1, Math.round(chineseChars / 4 / (params.speed ?? 1)));
+  return { audioUrl: urlData.publicUrl, audioLength, provider: 'mimo', model };
+}
+
+async function resolveVoiceSample(voiceRecordId: string): Promise<string> {
+  const { supabase } = await import('@/db/supabase');
+  const { data: rec, error } = await supabase.from('user_voices').select('sample_audio_url').eq('id', voiceRecordId).single();
+  if (error || !rec) throw new Error('未找到音色记录 (' + voiceRecordId + '): ' + (error?.message ?? 'unknown'));
+  const audioResp = await fetch(rec.sample_audio_url);
+  if (!audioResp.ok) throw new Error('下载音频样本失败: ' + audioResp.status);
+  const blob = await audioResp.blob();
+  if (blob.size > 10 * 1024 * 1024) throw new Error('音频样本超过 10MB 限制');
+  const buf = await blob.arrayBuffer();
+  const u8 = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode(...u8.subarray(i, i + 8192));
+  const mime = (blob.type || '').includes('wav') ? 'audio/wav' : 'audio/mpeg';
+  return 'data:' + mime + ';base64,' + btoa(bin);
+}
+
 export function getMimoVoiceNameFromId(voiceId: string): string {
   if (!voiceId) return '';
-  if (voiceId.includes(':')) {
-    const parts = voiceId.split(':');
-    return parts[parts.length - 1] ?? voiceId;
-  }
+  if (voiceId.includes(':')) return voiceId.split(':').pop() ?? voiceId;
   return voiceId;
 }
