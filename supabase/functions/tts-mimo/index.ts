@@ -83,16 +83,17 @@ async function resolveVoiceFromRecord(
 
   const { data: rec, error } = await user
     .from("user_voices")
-    .select("sample_audio_url, provider")
+    .select("sample_audio_url")
     .eq("id", voiceRecordId)
     .single();
 
   if (error || !rec) {
     throw new Error(`未找到音色记录 (${voiceRecordId}): ${error?.message ?? "unknown"}`);
   }
-  if (rec.provider !== "mimo") {
-    throw new Error(`该音色(${voiceRecordId})不属于 MiMo（provider=${rec.provider ?? "null"}），无法用于 MiMo 合成`);
-  }
+    // // provider ???????migration 00021 ?????????
+  // if (rec.provider !== "mimo") {
+  //   // throw new Error(`该音色(${voiceRecordId})不属于 MiMo（provider=${rec.provider ?? "null"}），无法用于 MiMo 合成`);
+  //   }
 
   const audioResp = await fetch(rec.sample_audio_url, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; VideoCreator/1.0)" },
@@ -122,7 +123,7 @@ async function resolveVoiceFromRecord(
 
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const base64 = uint8ToBase64(bytes);
-  return { resolvedVoice: `data:${mime};base64,${base64}`, provider: rec.provider ?? "mimo" };
+  return { resolvedVoice: `data:${mime};base64,${base64}`, provider: "mimo" as const };
 }
 
 serve(async (req: Request): Promise<Response> => {
