@@ -339,6 +339,7 @@ export default function CreatePage() {
       let audioUrl = '';
       let finalAudioDuration = 0;
       let mixedAudioUrl = '';
+      const IMAGE_DELAY_MS = 1500;
 
       // For non-gallery modes, generate TTS & BGM upfront
       if (mode !== 'gallery') {
@@ -556,8 +557,6 @@ export default function CreatePage() {
 
         let completedCount = 0;
         const CONCURRENCY = 2;
-        const IMAGE_DELAY_MS = 1500;
-        const IMAGE_DELAY_MS = 1500;
         const results = await batchParallel(
           optimizedPrompts,
           async (prompt, i) => {
@@ -925,7 +924,6 @@ export default function CreatePage() {
             }
           },
           CONCURRENCY,
-        IMAGE_DELAY_MS,
           IMAGE_DELAY_MS,
         );
 
