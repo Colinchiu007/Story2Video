@@ -34,7 +34,11 @@ export default function VoiceSection({
   showVoiceSettings, setShowVoiceSettings,
 }: VoiceSectionProps) {
   const presetList = voiceProvider === 'mimo' ? MIMO_PRESET_VOICES : VOICE_CATEGORIES;
-  const clonedVoices = userVoices.filter((voice) => (voice.provider ?? 'doubao') === voiceProvider);
+  const clonedVoices = userVoices.filter((voice) => {
+    // provider 列缺失时（migration 00021 未部署），显示所有音色
+    if (voice.provider == null) return true;
+    return voice.provider === voiceProvider;
+  });
   const visibleLegacyVoice = voiceProvider === 'doubao' ? doubaoVoice : null;
 
   React.useEffect(() => {

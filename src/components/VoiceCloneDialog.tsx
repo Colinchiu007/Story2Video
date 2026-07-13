@@ -539,7 +539,7 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium truncate">{voice.name}</span>
                       <span className="text-[10px] text-muted-foreground">
-                        {(voice.provider ?? 'doubao') === 'mimo' ? 'MiMo' : '豆包'}
+                        {voice.provider === 'mimo' ? 'MiMo' : voice.provider === 'doubao' ? '豆包' : (voice.voice_id ? '豆包' : 'MiMo')}
                       </span>
                       {statusBadge(voice.status)}
                     </div>
@@ -570,7 +570,7 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          const provider = (voice.provider ?? 'doubao') === 'mimo' ? 'mimo' : 'doubao';
+                          const provider: 'doubao' | 'mimo' = voice.provider === 'mimo' ? 'mimo' : voice.provider === 'doubao' ? 'doubao' : (voice.voice_id ? 'doubao' : 'mimo');
                           const selectedId = provider === 'mimo' ? voice.id : voice.voice_id!;
                           onSelectVoice?.(selectedId, voice.name, provider);
                           setOpen(false);
