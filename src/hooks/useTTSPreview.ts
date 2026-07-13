@@ -100,9 +100,23 @@ export function useTTSPreview(options: UseTTSPreviewOptions): UseTTSPreviewRetur
       return;
     }
     if (audioRef.current && audioPreview && !isPlayingPreview) {
-      audioRef.current.play().catch(() => toast.error('播放失败'));
-      setIsPlayingPreview(true);
-      return;
+      // 如果文字或参数有变化，重新生成而非播放旧缓存
+      if (cachedTts && (
+        cachedTts.text !== audioText.trim() ||
+        cachedTts.voiceId !== voiceId ||
+        cachedTts.speed !== speed ||
+        cachedTts.vol !== vol ||
+        cachedTts.pitch !== pitch ||
+        cachedTts.emotion !== emotion
+      )) {
+        audioRef.current = null;
+        setAudioPreview('');
+        setCachedTts(null);
+      } else {
+        audioRef.current.play().catch(() => toast.error('播放失败'));
+        setIsPlayingPreview(true);
+        return;
+      }
     }
     setIsPreviewingAudio(true);
     try {
