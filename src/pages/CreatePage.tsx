@@ -135,7 +135,11 @@ export default function CreatePage() {
 
   const isMimoClonedVoice = useCallback((id: string): boolean => {
     if (mimoVoice && mimoVoice.id === id) return true;
-    return userVoices.some((voice) => voice.provider === 'mimo' && voice.id === id);
+    return userVoices.some((voice) => {
+      if (voice.provider === 'mimo') return voice.id === id;
+      // provider åç¼ºå¤±æ¶éè¿ voice_id æ¨æµï¼æ  voice_id ä¸ç¶æä¸º ready çæ¯ MiMo
+      return voice.provider == null && voice.voice_id == null && voice.status === 'ready' && voice.id === id;
+    });
   }, [mimoVoice, userVoices]);
   // isUploading moved to useFileUploads hook
   // ── TTS 预览（通过 useTTSPreview hook） ─────────────────────────

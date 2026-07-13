@@ -565,7 +565,7 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {voice.status === 'ready' && ((voice.provider ?? 'doubao') === 'mimo' || voice.voice_id) && (
+                    {voice.status === 'ready' && (voice.provider === 'mimo' || voice.voice_id || (voice.provider == null && voice.status === 'ready')) && (
                       <Button
                         variant="ghost"
                         size="sm"
