@@ -19,6 +19,21 @@ export interface GenerateMimoTTSResult {
   model?: string;
 }
 
+/** Exponential backoff delay for retryable errors (429, 5xx). */
+function backoffDelay(attempt: number, baseMs = 1000): number {
+  return Math.min(baseMs * Math.pow(2, attempt), 15000);
+}
+
+/** Sleep helper. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Whether the HTTP status is retryable (429 rate-limit or 5xx server error). */
+function isRetryable(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
 export async function generateMimoTTS(params: GenerateMimoTTSParams): Promise<GenerateMimoTTSResult> {
   const model = params.model ?? (params.voiceRecordId ? 'mimo-v2.5-tts-voiceclone' : 'mimo-v2.5-tts');
   const body: Record<string, unknown> = { text: params.text, model, format: params.format ?? 'wav' };
@@ -30,12 +45,49 @@ export async function generateMimoTTS(params: GenerateMimoTTSParams): Promise<Ge
   const mimoKey = getStoredMimoApiKey();
   if (mimoKey) body.mimo_api_key = mimoKey;
 
-  try {
-    const data = await invokeFunction('tts-mimo', body) as { audioUrl: string; audioLength: number; provider?: string; model?: string };
-    return { audioUrl: data.audioUrl, audioLength: data.audioLength, provider: data.provider as 'mimo', model: data.model ?? model };
-  } catch {
-    return generateMimoTTSDirect(params, mimoKey);
+  // Retry the Edge Function call up to 3 times on retryable errors
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const data = await invokeFunction('tts-mimo', body) as { audioUrl: string; audioLength: number; provider?: string; model?: string };
+      return { audioUrl: data.audioUrl, audioLength: data.audioLength, provider: data.provider as 'mimo', model: data.model ?? model };
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      // Retry on 429 / rate limit / server errors
+      if (attempt < maxAttempts - 1 && /429|rate.limit|402|server/i.test(msg)) {
+        await sleep(backoffDelay(attempt));
+        continue;
+      }
+      // Fall through to direct call on first failure, or throw on retry exhaustion
+      if (attempt === 0) break;
+      throw err;
+    }
   }
+
+  // Fallback: direct API call with retry
+  return generateMimoTTSDirectWithRetry(params, mimoKey);
+}
+
+async function generateMimoTTSDirectWithRetry(params: GenerateMimoTTSParams, apiKey: string, maxAttempts = 3): Promise<GenerateMimoTTSResult> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await generateMimoTTSDirect(params, apiKey);
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts - 1) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/429|rate.limit|402|server/i.test(msg)) {
+          await sleep(backoffDelay(attempt));
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 }
 
 async function generateMimoTTSDirect(params: GenerateMimoTTSParams, apiKey: string): Promise<GenerateMimoTTSResult> {
@@ -78,7 +130,7 @@ async function generateMimoTTSDirect(params: GenerateMimoTTSParams, apiKey: stri
 async function resolveVoiceSample(voiceRecordId: string): Promise<string> {
   const { supabase } = await import('@/db/supabase');
   const { data: rec, error } = await supabase.from('user_voices').select('sample_audio_url').eq('id', voiceRecordId).single();
-  if (error || !rec) throw new Error('未找到音色记录 (' + voiceRecordId + '): ' + (error?.message ?? 'unknown'));
+  if (error || !rec) throw new Error('未找到音色记录(' + voiceRecordId + '): ' + (error?.message ?? 'unknown'));
   const audioResp = await fetch(rec.sample_audio_url);
   if (!audioResp.ok) throw new Error('下载音频样本失败: ' + audioResp.status);
   const blob = await audioResp.blob();

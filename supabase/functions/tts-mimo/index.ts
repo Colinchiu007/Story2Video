@@ -28,12 +28,14 @@ function jsonOk(data: Record<string, unknown>, status = 200): Response {
   });
 }
 
-/**
- * Estimate audio duration from text length.
- * Chinese: ~4 chars/sec at normal speed
- * English: ~3.5 words/sec at normal speed
- * Mixed: weighted average
- */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isRetryable(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
 function estimateAudioDuration(text: string, speedFactor = 1.0): number {
   const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
   const englishWords = (text.match(/[a-zA-Z]+/g) || []).length;
@@ -42,9 +44,6 @@ function estimateAudioDuration(text: string, speedFactor = 1.0): number {
   return Math.max(1, Math.round(baseSeconds / speedFactor));
 }
 
-/**
- * Safe chunked Uint8Array -> base64 string to avoid String.fromCharCode arg limit.
- */
 function uint8ToBase64(bytes: Uint8Array): string {
   let bin = "";
   const chunkSize = 8192;
@@ -64,10 +63,6 @@ interface TtsMimoRequest {
   mimo_api_key?: string;
 }
 
-/**
- * If voice_record_id is provided, fetch the user_voices record, download the sample audio,
- * and return an inline `data:audio/...;base64,...` string for MiMo voiceclone models.
- */
 async function resolveVoiceFromRecord(
   userJwt: string,
   voiceRecordId: string,
@@ -88,12 +83,8 @@ async function resolveVoiceFromRecord(
     .single();
 
   if (error || !rec) {
-    throw new Error(`未找到音色记录 (${voiceRecordId}): ${error?.message ?? "unknown"}`);
+    throw new Error(`未找到音色记录(${voiceRecordId}): ${error?.message ?? "unknown"}`);
   }
-    // // provider ???????migration 00021 ?????????
-  // if (rec.provider !== "mimo") {
-  //   // throw new Error(`该音色(${voiceRecordId})不属于 MiMo（provider=${rec.provider ?? "null"}），无法用于 MiMo 合成`);
-  //   }
 
   const audioResp = await fetch(rec.sample_audio_url, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; VideoCreator/1.0)" },
@@ -103,14 +94,12 @@ async function resolveVoiceFromRecord(
   }
   const blob = await audioResp.blob();
 
-  // MiMo 限制：base64 字符串不超过 10MB；原始音频约 ≤ 7.5MB
   if (blob.size > 10 * 1024 * 1024) {
     throw new Error(
       `音频样本超过 MiMo 10MB 限制（实际 ${(blob.size / 1024 / 1024).toFixed(1)} MB）。请使用更短/更低码率的音频`,
     );
   }
 
-  // 检测 MIME
   const ct = (blob.type || "").toLowerCase();
   let mime = "audio/mpeg";
   if (ct.includes("wav")) mime = "audio/wav";
@@ -134,11 +123,9 @@ serve(async (req: Request): Promise<Response> => {
     return jsonError("Method Not Allowed", 405);
   }
 
-  // Extract user JWT for RLS-protected lookups
   const authHeader = req.headers.get("Authorization") ?? "";
   const userJwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 
-  // Parse body
   let body: TtsMimoRequest;
   try {
     body = await req.json() as TtsMimoRequest;
@@ -158,13 +145,11 @@ serve(async (req: Request): Promise<Response> => {
   }
   const speed = typeof body.speed === "number" && body.speed > 0 ? body.speed : 1.0;
 
-  // API Key: request body > env
   const apiKey = (body.mimo_api_key ?? "").trim() || (Deno.env.get("MIMO_API_KEY") ?? "").trim();
   if (!apiKey) {
-    return jsonError("未配置 MiMo API Key，请在「设置 → API设置 → 语音模型」中填写，或部署环境变量 MIMO_API_KEY");
+    return jsonError("未配置 MiMo API Key，请在「设置」→「API设置」→「语音模型」中填写，或部署环境变量 MIMO_API_KEY");
   }
 
-  // Resolve voice: either preset name (already a plain string) or clone (resolve from record)
   let resolvedVoice = body.voice ?? "";
   let isClonedFromRecord = false;
   if (body.voice_record_id) {
@@ -182,9 +167,6 @@ serve(async (req: Request): Promise<Response> => {
     return jsonError("voice 或 voice_record_id 必须提供一个");
   }
 
-  // Build MiMo request payload
-  // voiceclone 模型要求 messages: [{role:user, content:""}, {role:assistant, content:text}]
-  // preset 模型遵循相同结构（user 可选留空），传 style/style 文本亦可
   const messages: Array<{ role: string; content: string }> = [
     { role: "user", content: "" },
     { role: "assistant", content: text },
@@ -199,28 +181,58 @@ serve(async (req: Request): Promise<Response> => {
     },
   };
 
-  // Call MiMo
-  let upstream: Response;
-  try {
-    upstream = await fetch("https://api.xiaomimimo.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": apiKey,
-      },
-      body: JSON.stringify(requestBody),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return jsonError(`MiMo 调用失败: ${msg}`);
+  // Retry MiMo API call with exponential backoff on 429/5xx
+  const maxAttempts = 3;
+  let upstream: Response | null = null;
+  let rawText = "";
+  let lastError = "";
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      upstream = await fetch("https://api.xiaomimimo.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": apiKey,
+        },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      if (attempt < maxAttempts - 1) {
+        await sleep(Math.min(1000 * Math.pow(2, attempt), 15000));
+        continue;
+      }
+      return jsonError(`MiMo API 调用失败: ${lastError}`);
+    }
+
+    rawText = await upstream.text();
+
+    if (isRetryable(upstream.status) && attempt < maxAttempts - 1) {
+      // Try to parse retry-after or use exponential backoff
+      let retryAfter = Math.min(1000 * Math.pow(2, attempt), 15000);
+      const retryHeader = upstream.headers.get("retry-after");
+      if (retryHeader) {
+        const parsed = parseInt(retryHeader, 10);
+        if (!isNaN(parsed) && parsed > 0) retryAfter = Math.min(parsed * 1000, 30000);
+      }
+      console.log(`[tts-mimo] Retryable ${upstream.status} (attempt ${attempt + 1}/${maxAttempts}), waiting ${retryAfter}ms`);
+      await sleep(retryAfter);
+      continue;
+    }
+
+    break; // Success or non-retryable error
   }
 
-  const rawText = await upstream.text();
+  if (!upstream) {
+    return jsonError("MiMo API 调用异常：无响应");
+  }
+
   let result: Record<string, unknown>;
   try {
     result = JSON.parse(rawText);
   } catch {
-    return jsonError(`MiMo 返回非 JSON（HTTP ${upstream.status}）: ${rawText.slice(0, 200)}`);
+    return jsonError(`MiMo 返回非JSON（HTTP ${upstream.status}）: ${rawText.slice(0, 200)}`);
   }
 
   if (!upstream.ok) {
@@ -230,13 +242,11 @@ serve(async (req: Request): Promise<Response> => {
     return jsonError(`MiMo 合成失败: ${errMsg}`);
   }
 
-  // Extract audio
   const audioB64 = (result.choices as Array<{ message?: { audio?: { data?: string } } }>)?.[0]?.message?.audio?.data;
   if (!audioB64) {
     return jsonError(`MiMo 未返回音频数据: ${rawText.slice(0, 300)}`);
   }
 
-  // Decode + upload to Supabase Storage
   try {
     const bin = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
     const ext = format === "mp3" ? "mp3" : (format === "pcm16" ? "pcm" : "wav");
