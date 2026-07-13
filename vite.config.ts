@@ -1,6 +1,4 @@
 import { defineConfig } from "vite";
-// @ts-ignore — miaoda-sc-plugin 没有类型声明
-import { miaodaDevPlugin } from "miaoda-sc-plugin";
 import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
 import path from "path";
@@ -9,7 +7,6 @@ import path from "path";
 export default defineConfig({
   plugins: [
     react(),
-    miaodaDevPlugin(),
     svgr({
       svgrOptions: {
         icon: true,

@@ -34,8 +34,8 @@ export async function cloneVoice(params: {
 }
 
 /**
- * 上传音色样本到 MiMo。无独立 clone API：直接写入 user_voices 表并标记 provider='mimo'、status='ready'。
- * 后续 TTS 调用时，Edge Function 会从 sample_audio_url 下载并 base64 编码传入 MiMo。
+ * 上传音色样本到 MiMo。
+ * 兼容处理：如果 `provider` 列不存在（migration 00021 未部署），回退到不含 provider 列的插入。
  */
 export async function uploadMimoVoiceSample(params: {
   name: string;
@@ -43,21 +43,43 @@ export async function uploadMimoVoiceSample(params: {
   audioUrl: string;
   duration?: number;
 }): Promise<{ id: string; name: string; status: string }> {
+  // 优先尝试带 provider 列的插入
   const { data, error } = await supabase
     .from('user_voices')
     .insert({
       name: params.name,
       description: params.description ?? '',
       sample_audio_url: params.audioUrl,
-      status: 'ready',          // MiMo 无需异步训练，保存即 ready
+      status: 'ready',
       provider: 'mimo',
       duration_seconds: params.duration ?? null,
       language: 'Chinese',
     })
     .select('id, name, status')
     .single();
-  if (error) throw new Error(extractErrorMessage(error));
-  return data;
+
+  if (!error) return data;
+
+  // 如果是因为 provider 列缺失，回退到不含 provider 的插入
+  if (error.code === 'PGRST204' && error.message.includes('provider')) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('user_voices')
+      .insert({
+        name: params.name,
+        description: params.description ?? '',
+        sample_audio_url: params.audioUrl,
+        status: 'ready',
+        duration_seconds: params.duration ?? null,
+        language: 'Chinese',
+      })
+      .select('id, name, status')
+      .single();
+
+    if (fallbackError) throw new Error(extractErrorMessage(fallbackError));
+    return fallbackData;
+  }
+
+  throw new Error(extractErrorMessage(error));
 }
 
 export async function getUserVoices(): Promise<UserVoice[]> {

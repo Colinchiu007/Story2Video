@@ -1,4 +1,33 @@
-﻿## [v1.6.0] — 2026-07-13
+## [v1.7.0] — 2026-07-13
+
+### 质量节拍：解除 Miaoda 依赖
+
+#### 架构变更
+- **移除 3 个 Miaoda npm 包**:
+  - `miaoda-auth-react` — 源码中无引用，安全移除
+  - `miaoda-react-devkit` — 源码中无引用，安全移除
+  - `miaoda-sc-plugin` — 其 `patchSupabasePlugin` 在构建时修改 supabase 初始化代码，
+    现将该逻辑内联到源码中，使项目不再依赖此构建插件
+
+- **内联 customFetch 到 `src/db/supabase.ts`**:
+  - 原 `miaoda-sc-plugin` 的 `patchSupabasePlugin` 会在构建阶段向 supabase 初始化文件
+    注入 `customFetch` 适配器（用于 Miaoda 代理路径重写 + 错误处理）
+  - 现在这些逻辑直接写在源码中，无需构建时转换
+  - 移除了 `vite.config.ts` 中的 `miaodaDevPlugin()` 调用
+  - 移除了 `global.d.ts` 中对应的类型声明
+
+- **`.env.example` 新增 `VITE_SUPABASE_PROXY` 变量说明**
+
+#### Bug 修复
+- **MiMo 音色保存兼容处理**:
+  - 当 `user_voices` 表的 `provider` 列不存在时（migration 00021 未部署），
+    `uploadMimoVoiceSample` 自动回退到不含 `provider` 列的插入
+  - 一旦 migration 部署完成，自动使用含 `provider` 列的完整插入
+
+#### 基础设施
+- 移除 `pnpm-lock.yaml` 中 3 个 Miaoda 包记录
+- 简化 `supabase/config.toml`（移除过期 `auth.phone` 配置）
+## [v1.6.0] — 2026-07-13
 
 ### 质量节拍：防御式调试与架构统一
 
