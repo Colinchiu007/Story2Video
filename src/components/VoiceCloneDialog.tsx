@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Upload, X, Play, Pause, Trash2, User, AlertCircle, CheckCircle, Clock, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { cloneVoice, uploadMimoVoiceSample, getUserVoices, deleteUserVoice } from '@/services/voice-clone';
+import { extractErrorMessage } from '@/services/api-config';
 import { supabase } from '@/db/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserVoice } from '@/types';
@@ -250,9 +251,9 @@ export default function VoiceCloneDialog({ onSelectVoice, defaultProvider = 'dou
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '克隆失败';
+      const msg = extractErrorMessage(err);
       const prefix = cloneProvider === 'mimo' ? 'MiMo 音色保存失败' : '克隆失败';
-      toast.error(`${prefix}: ${msg}`);
+      toast.error(${prefix}: );
     } finally {
       setIsCloning(false);
     }

@@ -1,4 +1,4 @@
-import { supabase } from '@/db/supabase';
+﻿import { supabase } from '@/db/supabase';
 import type { UserVoice } from '@/types';
 import { invokeFunction, extractErrorMessage, getCustomApiConfig } from './api-config';
 import { getDoubaoApiKey as getStoredDoubaoApiKey } from '@/components/ApiSettingsDialog';
@@ -56,7 +56,7 @@ export async function uploadMimoVoiceSample(params: {
     })
     .select('id, name, status')
     .single();
-  if (error) throw error;
+  if (error) throw new Error(extractErrorMessage(error));
   return data;
 }
 
