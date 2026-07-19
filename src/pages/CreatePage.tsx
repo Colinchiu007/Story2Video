@@ -39,7 +39,7 @@ import type { VideoTemplate } from '@/types/template';
 import type { BgmConfig } from '@/components/BgmSettings';
 import type { SubtitleConfig } from '@/components/SubtitleSettings';
 
-// 閳光偓閳光偓 娴犲骸鐖堕柌蹇旀瀮娴犺泛顕遍崗?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+// ── 从常量文件导入 ──────────────────────────────────────────────────
 import { MODES } from '@/constants/modes';
 import { VOICE_CATEGORIES, EMOTION_OPTIONS } from '@/constants/voices';
 import { IMAGE_EFFECTS, TRANSITION_EFFECTS } from '@/constants/effects';
@@ -49,7 +49,7 @@ import { useTTSPreview } from '@/hooks/useTTSPreview';
 
 import { useAutoSaveDraft, useRestoreDraft, useClearDraft } from '@/hooks/useCreateDraft';
 import type { CreateDraftState, CreateDraftSetters } from '@/hooks/useCreateDraft';
-// 閳光偓閳光偓 JSX 鐎涙劗绮嶆禒?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+// ── JSX 子组件 ──────────────────────────────────────────────────
 import HeaderSection from '@/components/HeaderSection';
 import PromptInput from '@/components/PromptInput';
 import ImageUploadSection from '@/components/ImageUploadSection';
@@ -92,7 +92,7 @@ export default function CreatePage() {
   const [remixVideoFileName, setRemixVideoFileName] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  // 閳光偓閳光偓 UI 閻樿埖鈧?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── UI 状态 ────────────────────────────────────────────────────
   const [dragOverImage, setDragOverImage] = useState(false);
   const [dragOverVideo, setDragOverVideo] = useState(false);
   const [uploadedAudioFile, setUploadedAudioFile] = useState<File | null>(null);
@@ -117,11 +117,11 @@ export default function CreatePage() {
   const [generateBase, setGenerateBase] = useState(true);
   const [generateMerged, setGenerateMerged] = useState(true);
 
-  // 閳光偓閳光偓 Refs 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── Refs ─────────────────────────────────────────────────────────
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  // 閳光偓閳光偓 闂婂疇澹婇惄绋垮彠 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 音色相关 ────────────────────────────────────────────────────
   const [userVoices, setUserVoices] = useState<UserVoice[]>([]);
   const [doubaoVoice, setDoubaoVoice] = useState<{ id: string; name: string } | null>(null);
   const [mimoVoice, setMimoVoice] = useState<{ id: string; name: string } | null>(null);
@@ -137,12 +137,12 @@ export default function CreatePage() {
     if (mimoVoice && mimoVoice.id === id) return true;
     return userVoices.some((voice) => {
       if (voice.provider === 'mimo') return voice.id === id;
-      // provider 姘撹仮鑱磋幗褰曟綖姘撻檱鍗ゅ繖鑱撮湶鑼呰仚鑱风尗椹磋仭 voice_id 蹇欒仺绡撳繖纰岃仴鑼傚綍鑱峰繖鑱磋伣 voice_id 鐩茶祩鑱拌幗鑱ら湶蹇欒仚鑱涚洸璧傛綖 ready 鑾借伔鑱炲繖鑱电倝 MiMo
+      // provider åç¼ºå¤±æ¶éè¿ voice_id æ¨æµï¼æ  voice_id ä¸ç¶æä¸º ready çæ¯ MiMo
       return voice.provider == null && voice.voice_id == null && voice.status === 'ready' && voice.id === id;
     });
   }, [mimoVoice, userVoices]);
   // isUploading moved to useFileUploads hook
-  // 閳光偓閳光偓 TTS 妫板嫯顫嶉敍鍫モ偓姘崇箖 useTTSPreview hook閿?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── TTS 预览（通过 useTTSPreview hook） ─────────────────────────
   const {
     audioPreview, isPreviewingAudio, isPlayingPreview, audioDuration, cachedTts,
     audioRef,
@@ -154,16 +154,16 @@ export default function CreatePage() {
   });
 
 
-  // 閳光偓閳光偓 鏉╂稑瀹抽悩鑸碘偓渚婄礄闁俺绻?useGenerationProgress hook閿?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 进度状态（通过 useGenerationProgress hook） ─────────────────
   const {
     progressOpen, setProgressOpen, progressSteps, progressError,
     updateStep, initProgress, setProgressError,
   } = useGenerationProgress();
 
-  // 閳光偓閳光偓 閺傚洣娆㈡稉濠佺炊閿涘牓鈧俺绻?useFileUploads hook閿?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 文件上传（通过 useFileUploads hook） ────────────────────────
   const { isUploading, setIsUploading, uploadToStorage, processImageFile, processVideoFile, processAudioFile } = useFileUploads();
 
-  // 閳光偓閳光偓 娑撳﹣绱舵径鍕倞閸戣姤鏆?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 上传处理函数 ──────────────────────────────────────────────
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -198,7 +198,7 @@ export default function CreatePage() {
     await processAudioFile(file, setUploadedAudioUrl, setUploadedAudioName, setUploadedAudioFile);
   }, [processAudioFile, setUploadedAudioUrl, setUploadedAudioName, setUploadedAudioFile]);
 
-  // 閳光偓閳光偓 闂婂疇澹婄粻锛勬倞 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 音色管理 ──────────────────────────────────────────────────
   const loadVoices = useCallback(async () => {
     try {
       const id = getDoubaoVoiceId();
@@ -262,10 +262,10 @@ export default function CreatePage() {
     setTemplateOpen(false);
   }, []);
 
-  // 閳光偓閳光偓 闂婃娊顣堕弮鍫曟毐濡€崇础 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 音频时长模式 ──────────────────────────────────────────────
   const isAudioDurationMode = seconds === 'audio';
 
-  // 閳光偓閳光偓 閼藉顭堥幁銏狀槻娑撳氦鍤滈崝銊ょ箽鐎?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 草稿恢复与自动保存 ───────────────────────────────────────
   const draftSetters: CreateDraftSetters = {
     setMode, setPrompt, setAudioText, setVoiceId, setSpeed, setVol, setPitch, setEmotion,
     setSize, setSeconds, setUploadedImageUrl, setRemixVideoUrl, setRemixVideoFileName,
@@ -287,42 +287,42 @@ export default function CreatePage() {
   };
   useAutoSaveDraft(draftState, draftRestored);
 
-  // 閳光偓閳光偓 閼藉顭堥悩鑸碘偓?閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  // ── 草稿状态 ────────────────────────────────────────────────────
   const hasContent = prompt.trim().length > 0 || audioText.trim().length > 0;
   const hasAudioText = audioText.trim().length > 0;
 
   const handleGenerate = () => {
     if (!user) {
-      toast.error('鐠囧嘲鍘涢惂璇茬秿閸氬骸鍟€娴ｈ法鏁?AI 閻㈢喐鍨氶崝鐔诲厴');
+      toast.error('请先登录后再使用 AI 生成功能');
       navigate('/login', { state: { from: { pathname: '/' } } });
       return;
     }
     if (mode === 'text' && !hasContent) {
-      toast.error('鐠囩柉鍤︾亸鎴濓綖閸愭瑨顫嬫０鎴炲伎鏉╃増鍨ㄧ拠顓㈢叾閸氬牊鍨氶弬鍥攳');
+      toast.error('请至少填写视频描述或语音合成文案');
       return;
     }
     if (mode === 'image' && !uploadedImageUrl) {
-      toast.error('鐠囪渹绗傛导鐘插棘閼板啫娴橀悧?);
+      toast.error('请上传参考图片');
       return;
     }
     if (mode === 'remix' && !remixVideoUrl) {
-      toast.error('鐠囪渹绗傛导鐘崇爱鐟欏棝顣堕弬鍥︽');
+      toast.error('请上传源视频文件');
       return;
     }
     if (mode === 'remix' && !prompt.trim()) {
-      toast.error('鐠囩柉绶崗銉х椽鏉堟垼顕╅弰?);
+      toast.error('请输入编辑说明');
       return;
     }
     if (mode === 'gallery' && !audioText.trim()) {
-      toast.error('鐠囩柉绶崗銉嚔闂婂啿鎮庨幋鎰瀮濡?);
+      toast.error('请输入语音合成文案');
       return;
     }
     if (mode === 'audio' && !uploadedAudioUrl) {
-      toast.error('鐠囪渹绗傛导鐘荤叾妫版垶鏋冩禒?);
+      toast.error('请上传音频文件');
       return;
     }
     if (mode === 'batch' && batchSegments.length === 0 && !batchInputText.trim()) {
-      toast.error('鐠囩柉鍤︾亸鎴ｇ翻閸忋儰绔村▓鍨瀮濡楀牊鍨ㄦ稉濠佺炊娑撯偓娑擃亪鐓舵０?);
+      toast.error('请至少输入一段文案或上传一个音频');
       return;
     }
     setShowConfirmDialog(true);
@@ -330,7 +330,7 @@ export default function CreatePage() {
 
   const executeGenerate = async () => {
     if (!generateBase && !generateMerged) {
-      toast.error('鐠囩柉鍤︾亸鎴︹偓澶嬪娑撯偓娑擃亣顫嬫０鎴犲閺堫剨绱欓崺铏诡攨閻楀牊鍨ㄩ弫鏉戞値閻楀牞绱?);
+      toast.error('请至少选择一个视频版本（基础版或整合版）');
       return;
     }
     setIsGenerating(true);
@@ -340,7 +340,6 @@ export default function CreatePage() {
       let finalAudioDuration = 0;
       let mixedAudioUrl = '';
       const IMAGE_DELAY_MS = 1500;
-      const TTS_STAGGER_MS = 2000;
 
       // For non-gallery modes, generate TTS & BGM upfront
       if (mode !== 'gallery') {
@@ -351,8 +350,8 @@ export default function CreatePage() {
             finalAudioDuration = result.audioLength;
             setAudioDuration(result.audioLength);
           } catch (err) {
-            const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '鐠囶參鐓堕崥鍫熷灇婢惰精瑙?;
-            toast.warning(`鐠囶參鐓堕崥鍫熷灇婢惰精瑙? ${msg}閿涘苯鐨㈢紒褏鐢婚悽鐔稿灇閺冪娀鐓舵０鎴ｎ潒妫版叢);
+            const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '语音合成失败';
+            toast.warning(`语音合成失败: ${msg}，将继续生成无音频视频`);
           }
         }
         if (audioUrl && bgmConfig.enabled && bgmConfig.url) {
@@ -362,10 +361,10 @@ export default function CreatePage() {
               : Number(seconds);
             const mixedBlobUrl = await mixAudio(audioUrl, bgmConfig.url, bgmConfig.volume, targetSeconds);
             audioUrl = await uploadMixedAudio(mixedBlobUrl, uploadToStorage);
-            toast.success('閼冲本娅欓棅鍏呯濞ｇ兘鐓剁€瑰本鍨?);
+            toast.success('背景音乐混音完成');
           } catch (err) {
             const msg = extractErrorMessage(err);
-            toast.warning(`閼冲本娅欓棅鍏呯濞ｇ兘鐓舵径杈Е: ${msg}閿涘苯鐨㈡担璺ㄦ暏閸樼喖鐓舵０鎱?;
+            toast.warning(`背景音乐混音失败: ${msg}，将使用原音频`);
           }
         }
       }
@@ -384,7 +383,7 @@ export default function CreatePage() {
         ? Math.ceil(totalSeconds / totalSegments)
         : totalSeconds;
 
-      const effectivePrompt = prompt.trim() || audioText.trim() || 'AI 閻㈢喐鍨氱憴鍡涱暥';
+      const effectivePrompt = prompt.trim() || audioText.trim() || 'AI 生成视频';
       const bgmPayload = {
         bgm_enabled: bgmConfig.enabled,
         bgm_url: bgmConfig.url || null,
@@ -405,7 +404,7 @@ export default function CreatePage() {
       // --- Gallery / Audio mode: auto-generate TTS (gallery only), images, then synthesize slideshow video ---
       if (mode === 'gallery' || mode === 'audio') {
         if (!isImageGenerationAvailable()) {
-          toast.error('閸ュ墽澧栨潪顔芥尡鐟欏棝顣堕棁鈧憰浣峰▏閻劌娴橀悧鍥╂晸閹存劕濮涢懗鏂ょ礉鐠囧嘲婀妴瀛塒I鐠佸墽鐤嗛妴宥佸晪閵嗗苯娴橀悧鍥侀崹瀣ㄢ偓宥勮厬闁瀚ㄦ稉鈧稉顏勫讲閻劎娈戝Ο鈥崇€烽敍鍫濆讲閻忛潧鍞寸純鐡礗閵嗕礁宓嗗锕€鍞寸純鐡礗閵嗕箓idu閼奉亜鐣炬稊鍫縋I閵嗕府iniMax閼奉亜鐣炬稊鍫縋I閵嗕礁鏅㈠Ч顥筫nseNova閼奉亜鐣炬稊鍫縋I缁涘绱?);
+          toast.error('图片轮播视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型（可灵内置AI、即梦内置AI、Vidu自定义API、MiniMax自定义API、商汤SenseNova自定义API等）');
           setIsGenerating(false);
           return;
         }
@@ -414,7 +413,7 @@ export default function CreatePage() {
 
         const task = await createVideoTask({
           mode,
-          prompt: audioText.trim() || (mode === 'audio' ? '闂婃娊顣堕悽鐔稿灇鐟欏棝顣? : ''),
+          prompt: audioText.trim() || (mode === 'audio' ? '音频生成视频' : ''),
           size,
           seconds: totalSeconds,
           audioUrl: mode === 'audio' ? uploadedAudioUrl : undefined,
@@ -432,11 +431,11 @@ export default function CreatePage() {
               ? audioDuration
               : Math.max(8, audioText.trim().length / 3.3);
             setAudioDuration(finalAudioDuration);
-            updateStep(1, 'completed', '娴ｈ法鏁ゆ稉濠佺炊閻ㄥ嫰鐓舵０鎴炴瀮娴?);
-            toast.success(`娴ｈ法鏁ゆ稉濠佺炊闂婃娊顣堕敍宀勵暕娴肩増妞傞梹?${finalAudioDuration.toFixed(1)} 缁夋妶);
+            updateStep(1, 'completed', '使用上传的音频文件');
+            toast.success(`使用上传音频，预估时长 ${finalAudioDuration.toFixed(1)} 秒`);
           } else {
-            updateStep(1, 'failed', '閺堫亙绗傛导鐘荤叾妫?);
-            setProgressError('閺堫亙绗傛导鐘荤叾妫版垶鏋冩禒?);
+            updateStep(1, 'failed', '未上传音频');
+            setProgressError('未上传音频文件');
             setIsGenerating(false);
             return;
           }
@@ -472,22 +471,22 @@ export default function CreatePage() {
                 voiceProvider,
               });
             } catch (err) {
-              const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '鐠囶參鐓堕崥鍫熷灇婢惰精瑙?;
-              toast.warning(`鐠囶參鐓堕崥鍫熷灇婢惰精瑙? ${msg}閿涘苯鐨㈢紒褏鐢婚悽鐔稿灇閺冪娀鐓舵０鎴ｎ潒妫版叢);
+              const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '语音合成失败';
+              toast.warning(`语音合成失败: ${msg}，将继续生成无音频视频`);
             }
           }
         }
-        // 閼汇儴顕㈤棅鍐叉値閹存劕銇戠拹銉礄gallery閿涘鍨ㄩ弮鐘荤叾妫版垶妞傞梹鍖＄礄audio閿涘绱濋幐澶嬫瀮濡楀牆鐡ч弫棰佸強缁犳鐓舵０鎴炴闂€鍖＄礄娑擃厽鏋冪痪?.3鐎?缁夋帪绱?
+        // 若语音合成失败（gallery）或无音频时长（audio），按文案字数估算音频时长（中文约3.3字/秒）
         const estimatedDuration = finalAudioDuration > 0
           ? finalAudioDuration
           : Math.max(8, audioText.trim().length / 3.3 / Math.max(0.5, speed));
         const imageCount = Math.max(1, Math.ceil(estimatedDuration / perImageDuration));
         const durationLabel = finalAudioDuration > 0
-          ? `${finalAudioDuration.toFixed(1)} 缁夋妶
-          : `缁?${estimatedDuration.toFixed(1)} 缁夋帪绱欓幐澶婄摟閺侀鍙婄粻妤嬬礆`;
-        updateStep(1, 'completed', `閺冨爼鏆?${durationLabel}閿涘苯鐨㈤悽鐔稿灇 ${imageCount} 瀵姴娴橀悧?{ttsReused ? '閿涘牆顦查悽銊ュ嚒鐠囨洖鎯夐棅鎶筋暥閿? : ''}`);
+          ? `${finalAudioDuration.toFixed(1)} 秒`
+          : `约 ${estimatedDuration.toFixed(1)} 秒（按字数估算）`;
+        updateStep(1, 'completed', `时长 ${durationLabel}，将生成 ${imageCount} 张图片${ttsReused ? '（复用已试听音频）' : ''}`);
         if (audioText.trim()) {
-          toast.success(`鐠囶參鐓?{mode === 'audio' ? '閺傚洣娆? : (ttsReused ? '婢跺秶鏁ゅ鑼晸閹存劙鐓舵０? : finalAudioDuration > 0 ? '閸氬牊鍨氱€瑰本鍨? : '婢惰精瑙﹂敍灞惧瘻鐎涙鏆熸导鎵暬')}閿涘本妞傞梹?${durationLabel}閿涘苯鐨㈤悽鐔稿灇 ${imageCount} 瀵姴娴橀悧鍥风礄濮?{perImageDuration}缁?瀵媴绱歚);
+          toast.success(`语音${mode === 'audio' ? '文件' : (ttsReused ? '复用已生成音频' : finalAudioDuration > 0 ? '合成完成' : '失败，按字数估算')}，时长 ${durationLabel}，将生成 ${imageCount} 张图片（每${perImageDuration}秒1张）`);
         }
 
         // Step 2: BGM mixing
@@ -500,11 +499,11 @@ export default function CreatePage() {
             const mixedBlobUrl = await mixAudio(audioUrl, bgmConfig.url, bgmConfig.volume, Math.ceil(finalAudioDuration || 8));
             mixedAudioUrl = await uploadMixedAudio(mixedBlobUrl, uploadToStorage);
             updateStep(bgmStepIndex, 'completed');
-            toast.success('閼冲本娅欓棅鍏呯濞ｇ兘鐓剁€瑰本鍨?);
+            toast.success('背景音乐混音完成');
           } catch (err) {
             const msg = extractErrorMessage(err);
             updateStep(bgmStepIndex, 'failed', msg);
-            toast.warning(`閼冲本娅欓棅鍏呯濞ｇ兘鐓舵径杈Е: ${msg}閿涘苯鐨㈡担璺ㄦ暏閸樼喖鐓舵０鎱?;
+            toast.warning(`背景音乐混音失败: ${msg}，将使用原音频`);
             mixedAudioUrl = audioUrl;
           }
         }
@@ -528,7 +527,7 @@ export default function CreatePage() {
         const imgSegments = segResult.segments;
         const splitTier = segResult.tier;
         const actualCount = imgSegments.length;
-        updateStep(segIndex, 'completed', `鐠囶厺绠熼崚鍡樻焽娑?${actualCount} 濞?(text-seg v1.0)`);
+        updateStep(segIndex, 'completed', `语义分断为 ${actualCount} 段 (text-seg v1.0)`);
 
         // Step 4: Generate image prompts with v9.0 strategy (client-side, no LLM)
         const optIndex = segIndex + 1;
@@ -536,8 +535,8 @@ export default function CreatePage() {
         const promptResult = await generateImagePromptsSmart(imgSegments, audioText.trim());
         const optimizedPrompts = promptResult.prompts;
         const promptTier = promptResult.tier;
-        updateStep(optIndex, 'completed', `閸?${optimizedPrompts.length} 閺夆剝褰佺粈楦跨槤 (prompt v9.0)`);
-        toast.success(`閹绘劗銇氱拠宥勭喘閸栨牕鐣幋鎰剁礉閸?${optimizedPrompts.length} 閺夘晢);
+        updateStep(optIndex, 'completed', `共 ${optimizedPrompts.length} 条提示词 (prompt v9.0)`);
+        toast.success(`提示词优化完成，共 ${optimizedPrompts.length} 杢`);
 
         // Step 5: Generate images with optimized prompts
         const imgIndex = optIndex + 1;
@@ -609,17 +608,17 @@ export default function CreatePage() {
         );
         const failed = results.filter((r) => !r.success);
         if (failed.length > 0) {
-          const failReasons = failed.map((r) => `缁?{(r as { index: number }).index + 1}瀵? ${(r as { error?: string }).error || '閺堫亞鐓￠柨娆掝嚖'}`).join('閿?);
-          updateStep(imgIndex, 'failed', `${completedCount}/${actualCount}閿?{failReasons}`);
-          toast.warning(`${failed.length} 瀵姴娴橀悧鍥╂晸閹存劕銇戠拹? ${failReasons}`);
+          const failReasons = failed.map((r) => `第${(r as { index: number }).index + 1}张: ${(r as { error?: string }).error || '未知错误'}`).join('；');
+          updateStep(imgIndex, 'failed', `${completedCount}/${actualCount}，${failReasons}`);
+          toast.warning(`${failed.length} 张图片生成失败: ${failReasons}`);
         } else {
           updateStep(imgIndex, 'completed', `${completedCount}/${actualCount}`);
         }
 
         const successCount = results.filter((r) => (r as { success: boolean }).success).length;
         if (successCount === 0) {
-          const allErrors = results.map((r, i) => !(r as { success: boolean }).success ? `缁?{i + 1}瀵? ${(r as { error?: string }).error || '閺堫亞鐓￠柨娆掝嚖'}` : '').filter(Boolean).join('閿?);
-          setProgressError(`閹碘偓閺堝娴橀悧鍥╂晸閹存劕銇戠拹銉礉閺冪姵纭堕崥鍫熷灇鐟欏棝顣堕妴鍌炴晩鐠囶垵顕涢幆? ${allErrors}`);
+          const allErrors = results.map((r, i) => !(r as { success: boolean }).success ? `第${i + 1}张: ${(r as { error?: string }).error || '未知错误'}` : '').filter(Boolean).join('；');
+          setProgressError(`所有图片生成失败，无法合成视频。错误详情: ${allErrors}`);
           setIsGenerating(false);
           return;
         }
@@ -628,10 +627,10 @@ export default function CreatePage() {
         if (failed.length > 0) {
           await supabase.from('video_tasks').update({
             status: 'images_ready',
-            error_message: `${failed.length} 瀵姴娴橀悧鍥╂晸閹存劕銇戠拹顧?
+            error_message: `${failed.length} 张图片生成失败`,
           }).eq('id', task.id);
-          updateStep(imgIndex, 'failed', `${completedCount}/${actualCount}閿涘苯鍑￠崑婊勵剾閼奉亜濮╅崥鍫熷灇閵嗗倽顕崜宥呯窔娴犺濮熺拠锔藉剰妞ょ敻鍣搁弬鎵晸閹存劕銇戠拹銉ф畱閸ュ墽澧栭敍宀€鍔ч崥搴㈠閸斻劌鎮庨獮鎯邦潒妫版垯鈧繖);
-          toast.error(`${failed.length} 瀵姴娴橀悧鍥╂晸閹存劕銇戠拹銉礉瀹告彃浠犲銏ｅ殰閸斻劌鎮庨幋鎰┾偓鍌濐嚞閸撳秴绶氶妴灞兼崲閸斅ゎ嚊閹懌鈧秹銆夐棃銏ゅ櫢閺傛壆鏁撻幋鎰亼鐠愩儳娈戦崶鍓у閵嗕繖);
+          updateStep(imgIndex, 'failed', `${completedCount}/${actualCount}，已停止自动合成。请前往任务详情页重新生成失败的图片，然后手动合并视频。`);
+          toast.error(`${failed.length} 张图片生成失败，已停止自动合成。请前往「任务详情」页面重新生成失败的图片。`);
           setIsGenerating(false);
           setTimeout(() => { setProgressOpen(false); navigate(`/gallery/${task.id}`); }, 1500);
           return;
@@ -659,12 +658,12 @@ export default function CreatePage() {
           merged_video_url: null,
         }).eq('id', task.id);
 
-        updateStep(vidIndex, 'active', `鐟欏棝顣跺〒鍙夌厠娑擃叏绱濇０鍕吀缁绢垱瑕嗛弻鎾跺 ${estSeconds} 缁夋帇鈧倹鏁為敍姘愁潒妫版垹鏁卞ù蹇氼潔閸ｃ劌鐤勯弮璺虹秿閸掕泛鎮庨幋鎰剁礉閺冨爼鏆辨稉搴ㄧ叾妫版垳绔撮懛杈剧幢閻㈢喐鍨氱€瑰本鍨氶崥搴″讲閸撳秴绶氶妴灞藉坊閸欒尪顔囪ぐ鏇樷偓宥嗙叀閻绮ㄩ弸娓€);
+        updateStep(vidIndex, 'active', `视频渲染中，预计纯渲染约 ${estSeconds} 秒。注：视频由浏览器实时录制合成，时长与音频一致；生成完成后可前往「历史记录」查看结果`);
         try {
           // 6a: Base version (voice + images only)
           let baseVideoUrl: string | null = null;
           if (generateBase) {
-            updateStep(vidIndex, 'active', `濮濓絽婀崥鍫熷灇閸╄櫣顢呴悧鍫ｎ潒妫版埊绱欑拠顓㈢叾+閻㈠娼伴敍?{estSeconds} 缁夋妶);
+            updateStep(vidIndex, 'active', `正在合成基础版视频（语音+画面）${estSeconds} 秒`);
             const baseBlob = await createSlideshowVideo(
               validImages,
               audioUrl || null,
@@ -672,7 +671,7 @@ export default function CreatePage() {
               transitionEffect,
               30,
               (progress) => {
-                updateStep(vidIndex, 'active', `閸╄櫣顢呴悧鍫ｎ潒妫版垶瑕嗛弻鎾茶厬 ${progress}%`);
+                updateStep(vidIndex, 'active', `基础版视频渲染中 ${progress}%`);
               },
             );
             const baseExt = getVideoExtension(baseBlob.type || 'video/webm');
@@ -689,7 +688,7 @@ export default function CreatePage() {
           // 6b: Merged version (voice + BGM + subtitles) if configured
           let mergedVideoUrl: string | null = null;
           if (generateMerged && (bgmConfig.enabled || subtitleConfig.enabled)) {
-            updateStep(vidIndex, 'active', `濮濓絽婀崥鍫熷灇閺佹潙鎮庨悧鍫ｎ潒妫版埊绱欑拠顓㈢叾+閼冲本娅欓棅鍏呯+鐎涙绠烽敍?{estSeconds} 缁夋妶);
+            updateStep(vidIndex, 'active', `正在合成整合版视频（语音+背景音乐+字幕）${estSeconds} 秒`);
 
             // Build subtitle timeline synchronized with voice duration
             // Each subtitle line is 1-12 chars, timed proportionally by char count
@@ -706,7 +705,7 @@ export default function CreatePage() {
               transitionEffect,
               30,
               (progress) => {
-                updateStep(vidIndex, 'active', `閺佹潙鎮庨悧鍫ｎ潒妫版垶瑕嗛弻鎾茶厬 ${progress}%`);
+                updateStep(vidIndex, 'active', `整合版视频渲染中 ${progress}%`);
               },
               {
                 subtitles: subtitleConfig.enabled ? subtitles : undefined,
@@ -734,18 +733,18 @@ export default function CreatePage() {
           }).eq('id', task.id);
           if (dbErr) {
             console.error('DB update failed:', dbErr);
-            toast.error('鐟欏棝顣跺鑼晸閹存劧绱濇担鍡欏Ц閹焦娲块弬鏉裤亼鐠愩儻绱濈拠宄板煕閺傛澘宸婚崣鑼额唶瑜版洘鐓￠惇?);
+            toast.error('视频已生成，但状态更新失败，请刷新历史记录查看');
           }
 
           const completedMsg = baseVideoUrl && mergedVideoUrl
-            ? '閸╄櫣顢呴悧鍫滅瑢閺佹潙鎮庨悧鍫濇綆瀹告彃鐣幋?
+            ? '基础版与整合版均已完成'
             : baseVideoUrl
-              ? '閸╄櫣顢呴悧鍫濆嚒鐎瑰本鍨?
+              ? '基础版已完成'
               : mergedVideoUrl
-                ? '閺佹潙鎮庨悧鍫濆嚒鐎瑰本鍨?
-                : '鐟欏棝顣堕悽鐔稿灇鐎瑰本鍨?;
+                ? '整合版已完成'
+                : '视频生成完成';
           updateStep(vidIndex, 'completed', completedMsg);
-          toast.success(completedMsg + '閿?);
+          toast.success(completedMsg + '！');
           setTimeout(() => setProgressOpen(false), 800);
           navigate(`/gallery/${task.id}`);
         } catch (err) {
@@ -756,8 +755,8 @@ export default function CreatePage() {
             progress: 66,
           }).eq('id', task.id);
           updateStep(vidIndex, 'failed', msg);
-          setProgressError(`鐟欏棝顣堕崥鍫熷灇婢惰精瑙? ${msg}閿涘苯鍑℃穱婵嗙摠閸ュ墽澧栭敍灞惧亶閸欘垯浜掓潻娑樺弳閸ュ墽澧栫粻锛勬倞妞ょ敻娼伴幍瀣З閸氬牊鍨歚);
-          toast.error(`鐟欏棝顣堕崥鍫熷灇婢惰精瑙? ${msg}閿涘苯鍑℃穱婵嗙摠閸ュ墽澧栭敍灞惧亶閸欘垯浜掓潻娑樺弳閸ュ墽澧栫粻锛勬倞妞ょ敻娼伴幍瀣З閸氬牊鍨歚);
+          setProgressError(`视频合成失败: ${msg}，已保存图片，您可以进入图片管理页面手动合成`);
+          toast.error(`视频合成失败: ${msg}，已保存图片，您可以进入图片管理页面手动合成`);
           setTimeout(() => { setProgressOpen(false); navigate(`/gallery/${task.id}`); }, 1200);
         }
         setIsGenerating(false);
@@ -767,7 +766,7 @@ export default function CreatePage() {
       // --- Batch mode: create parent + child tasks, generate TTS and images for each segment ---
       if (mode === 'batch') {
         if (!isImageGenerationAvailable()) {
-          toast.error('閸掑棙顔岀憴鍡涱暥闂団偓鐟曚椒濞囬悽銊ユ禈閻楀洨鏁撻幋鎰閼虫枻绱濈拠宄版躬閵嗗瓑PI鐠佸墽鐤嗛妴宥佸晪閵嗗苯娴橀悧鍥侀崹瀣ㄢ偓宥勮厬闁瀚ㄦ稉鈧稉顏勫讲閻劎娈戝Ο鈥崇€烽敍鍫濆讲閻忛潧鍞寸純鐡礗閵嗕礁宓嗗锕€鍞寸純鐡礗閵嗕箓idu閼奉亜鐣炬稊鍫縋I閵嗕府iniMax閼奉亜鐣炬稊鍫縋I閵嗕礁鏅㈠Ч顥筫nseNova閼奉亜鐣炬稊鍫縋I缁涘绱?);
+          toast.error('分段视频需要使用图片生成功能，请在「API设置」→「图片模型」中选择一个可用的模型（可灵内置AI、即梦内置AI、Vidu自定义API、MiniMax自定义API、商汤SenseNova自定义API等）');
           setIsGenerating(false);
           return;
         }
@@ -782,7 +781,7 @@ export default function CreatePage() {
           segments.push({ text: seg.text, audioUrl: seg.audioUrl, audioName: seg.audioName });
         }
         if (segments.length === 0) {
-          toast.error('鐠囩柉鍤︾亸鎴ｇ翻閸忋儰绔村▓鍨瀮濡楀牊鍨ㄦ稉濠佺炊娑撯偓娑擃亪鐓舵０?);
+          toast.error('请至少输入一段文案或上传一个音频');
           setIsGenerating(false);
           return;
         }
@@ -790,7 +789,7 @@ export default function CreatePage() {
         updateStep(0, 'active');
         const parentTask = await createVideoTask({
           mode: 'batch',
-          prompt: batchInputText.trim() || '閸掑棙顔岀憴鍡涱暥',
+          prompt: batchInputText.trim() || '分段视频',
           size,
           seconds: 0,
           totalSegments: segments.length,
@@ -820,10 +819,10 @@ export default function CreatePage() {
           });
           childTasks.push({ id: seg.id, index: i, text: segments[i].text, audioUrl: segments[i].audioUrl });
         }
-        updateStep(1, 'completed', `瀹告彃鍨卞?${segments.length} 娑擃亜鍨庡▓鍏告崲閸旑摝);
+        updateStep(1, 'completed', `已创建 ${segments.length} 个分段任务`);
 
         // Parallel TTS + image generation for each child task
-        updateStep(2, 'active', `濮濓絽婀悽鐔稿灇閸氬嫬鍨庡▓鐢垫畱鐠囶參鐓舵稉搴℃禈閻?0/${segments.length}`);
+        updateStep(2, 'active', `正在生成各分段的语音与图片 0/${segments.length}`);
         let completedSegments = 0;
         const CONCURRENCY = 2;
         const segmentResults = await batchParallel(
@@ -838,10 +837,6 @@ export default function CreatePage() {
                 segAudioUrl = child.audioUrl;
                 segAudioDuration = Math.max(8, child.text.length / 3.3);
               } else {
-                // Stagger TTS calls to avoid Supabase auth token lock conflicts
-                if (child.index > 0) {
-                  await new Promise(r => setTimeout(r, TTS_STAGGER_MS));
-                }
                 try {
                   const ttsResult = await dispatchTTS(child.text);
                   segAudioUrl = ttsResult.audioUrl;
@@ -889,13 +884,13 @@ export default function CreatePage() {
                       break;
                     }
                     if (q.status === 'failed') {
-                      await supabase.from('gallery_images').update({ status: 'failed', error_message: q.error || '閸ュ墽澧栭悽鐔稿灇婢惰精瑙? }).eq('id', record.id);
+                      await supabase.from('gallery_images').update({ status: 'failed', error_message: q.error || '图片生成失败' }).eq('id', record.id);
                       break;
                     }
                     attempts++;
                   }
                   if (attempts >= maxAttempts) {
-                    await supabase.from('gallery_images').update({ status: 'failed', error_message: '閸ュ墽澧栭悽鐔稿灇鐡掑懏妞? }).eq('id', record.id);
+                    await supabase.from('gallery_images').update({ status: 'failed', error_message: '图片生成超时' }).eq('id', record.id);
                   }
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : String(err);
@@ -915,11 +910,11 @@ export default function CreatePage() {
 
               await supabase.from('video_tasks').update({
                 status: childStatus,
-                error_message: failCount > 0 ? `${failCount} 瀵姴娴橀悧鍥╂晸閹存劕銇戠拹顧?: null,
+                error_message: failCount > 0 ? `${failCount} 张图片生成失败` : null,
               }).eq('id', child.id);
 
               completedSegments++;
-              updateStep(2, 'active', `濮濓絽婀悽鐔稿灇閸氬嫬鍨庡▓鐢垫畱鐠囶參鐓舵稉搴℃禈閻?${completedSegments}/${segments.length}`);
+              updateStep(2, 'active', `正在生成各分段的语音与图片 ${completedSegments}/${segments.length}`);
               return { success: true, childId: child.id };
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -934,14 +929,14 @@ export default function CreatePage() {
 
         const allFailed = segmentResults.every((r) => (r as { success?: boolean }).success === false);
         if (allFailed) {
-          const firstErr = (segmentResults.find((r) => (r as { error?: string }).error) as { error?: string })?.error || '閹碘偓閺堝鍨庡▓鐢垫晸閹存劕銇戠拹?;
+          const firstErr = (segmentResults.find((r) => (r as { error?: string }).error) as { error?: string })?.error || '所有分段生成失败';
           await supabase.from('video_tasks').update({ status: 'failed', error_message: firstErr }).eq('id', parentTask.id);
           updateStep(2, 'failed', firstErr);
-          setProgressError(`閻㈢喐鍨氭径杈Е: ${firstErr}`);
-          toast.error(`閻㈢喐鍨氭径杈Е: ${firstErr}`);
+          setProgressError(`生成失败: ${firstErr}`);
+          toast.error(`生成失败: ${firstErr}`);
         } else {
-          updateStep(2, 'completed', `${completedSegments}/${segments.length} 娑擃亜鍨庡▓闈涘嚒鐎瑰本鍨氱拠顓㈢叾娑撳骸娴橀悧鍥╂晸閹存亝);
-          toast.success(`瀹歌尙鏁撻幋?${completedSegments} 娑擃亜鍨庡▓纰夌礉鐠囧嘲澧犲鈧崚鍡橆唽缁狅紕鎮婃い鐢告桨閸氬牊鍨氱憴鍡涱暥`);
+          updateStep(2, 'completed', `${completedSegments}/${segments.length} 个分段已完成语音与图片生成`);
+          toast.success(`已生成 ${completedSegments} 个分段，请前往分段管理页面合成视频`);
           setTimeout(() => setProgressOpen(false), 600);
           navigate(`/segments/${parentTask.id}`);
         }
@@ -981,14 +976,14 @@ export default function CreatePage() {
           const res = await startImageToVideo({ prompt: effectivePrompt, inputReferenceUrl: uploadedImageUrl, size });
           videoId = res.videoId; status = res.status;
         } else if (mode === 'remix') {
-          if (!remixVideoUrl) throw new Error('缂傚搫鐨┃鎰潒妫?);
+          if (!remixVideoUrl) throw new Error('缺少源视频');
           const res = await startRemixVideo({ videoUrl: remixVideoUrl, prompt: effectivePrompt });
           videoId = res.videoId; status = res.status;
         }
         await supabase.from('video_tasks').update({ video_id: videoId, status }).eq('id', task.id);
         updateStep(1, 'completed');
-        updateStep(2, 'active', '鐟欏棝顣堕悽鐔稿灇娑擃叏绱濋柅姘埗闂団偓鐟?-10閸掑棝鎸?..');
-        toast.success('娴犺濮熷鍙夊絹娴溿倧绱濆鈧慨瀣晸閹存劘顫嬫０?);
+        updateStep(2, 'active', '视频生成中，通常需要3-10分钟...');
+        toast.success('任务已提交，开始生成视频');
         setTimeout(() => setProgressOpen(false), 600);
         navigate(`/progress/${task.id}`);
         return;
@@ -1061,7 +1056,7 @@ export default function CreatePage() {
             } else if (mode === 'image') {
               res = await startImageToVideo({ prompt: seg.text, inputReferenceUrl: uploadedImageUrl, size });
             } else {
-              if (!remixVideoUrl) throw new Error('缂傚搫鐨┃鎰潒妫?);
+              if (!remixVideoUrl) throw new Error('缺少源视频');
               res = await startRemixVideo({ videoUrl: remixVideoUrl, prompt: seg.text });
             }
             await supabase.from('video_tasks').update({
@@ -1077,7 +1072,7 @@ export default function CreatePage() {
             console.error(`[CreatePage] Segment ${seg.index} failed:`, msg);
             const { error: updateErr } = await supabase.from('video_tasks').update({
               status: 'failed',
-              error_message: msg || '閺堫亞鐓￠柨娆掝嚖',
+              error_message: msg || '未知错误',
             }).eq('id', seg.taskId);
             if (updateErr) console.error('[CreatePage] Failed to update segment status:', updateErr);
             return { success: false, taskId: seg.taskId, error: msg };
@@ -1095,24 +1090,24 @@ export default function CreatePage() {
         return rec && rec.success === false;
       });
       if (allFailed) {
-        const firstError = (results.find((r) => (r as { error?: string })?.error) as { error?: string })?.error || '閹碘偓閺堝澧栧▓鐢垫晸閹存劕銇戠拹?;
+        const firstError = (results.find((r) => (r as { error?: string })?.error) as { error?: string })?.error || '所有片段生成失败';
         await supabase.from('video_tasks').update({
           status: 'failed',
           error_message: firstError,
         }).eq('id', parentTask.id);
         updateStep(2, 'failed', firstError);
-        setProgressError(`閻㈢喐鍨氭径杈Е: ${firstError}`);
-        toast.error(`閻㈢喐鍨氭径杈Е: ${firstError}`);
+        setProgressError(`生成失败: ${firstError}`);
+        toast.error(`生成失败: ${firstError}`);
       } else {
-        updateStep(2, 'active', `${totalSegments} 娑擃亞澧栧▓闈涜嫙鐞涘瞼鏁撻幋鎰厬閿涘矁顕懓鎰妇缁涘绶?..`);
-        toast.success(`瀹稿弶褰佹禍?${totalSegments} 娑擃亞澧栧▓鍏告崲閸斺槄绱濆В蹇斿閺堚偓婢?${CONCURRENCY} 娑擃亜鑻熺悰宀€鏁撻幋鎭?;
+        updateStep(2, 'active', `${totalSegments} 个片段并行生成中，请耐心等待...`);
+        toast.success(`已提交 ${totalSegments} 个片段任务，每批最多 ${CONCURRENCY} 个并行生成`);
         setTimeout(() => setProgressOpen(false), 600);
       }
       navigate(`/progress/${parentTask.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
       console.error('Generate error:', err);
-      toast.error(`閹绘劒姘︽径杈Е: ${msg}`);
+      toast.error(`提交失败: ${msg}`);
     } finally {
       setIsGenerating(false);
     }
